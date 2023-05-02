@@ -2,10 +2,17 @@
 
 DISPLAY_SELECT := CONFIG_DRM_MSM=m
 
+KBUILD_EXTRA_SYMBOLS := \
+    $(OUT_DIR)/../sm8550-modules/qcom/mm-drivers/hw_fence/Module.symvers \
+    $(OUT_DIR)/../sm8550-modules/qcom/mm-drivers/msm_ext_display/Module.symvers \
+    $(OUT_DIR)/../sm8550-modules/qcom/mm-drivers/sync_fence/Module.symvers \
+    $(OUT_DIR)/../sm8550-modules/qcom/mmrm-driver/Module.symvers \
+    $(OUT_DIR)/../sm8550-modules/qcom/securemsm-kernel/Module.symvers
+
 KBUILD_OPTIONS += DISPLAY_ROOT=$(KERNEL_SRC)/$(M)/../
 KBUILD_OPTIONS += BOARD_PLATFORM=$(TARGET_BOARD_PLATFORM)
 KBUILD_OPTIONS += $(DISPLAY_SELECT)
-KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS=$(OUT_DIR)/../sm8550-modules/qcom/mmrm-driver/Module.symvers
+KBUILD_OPTIONS += $(KBUILD_EXTRA_SYMBOLS)
 
 all: modules
 
