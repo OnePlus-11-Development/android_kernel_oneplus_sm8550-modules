@@ -1,17 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note
 
-# for Iris debug only, please don't port to customer
-# begin ...
-COMPILE_TIME = $(shell date +"%Y-%m-%d %H:%M:%S")
-ccflags-y += -DCOMPILE_TIME='"$(COMPILE_TIME)"'
-
-DISP_COMMIT_ID := $(shell cd $(srctree)/$(src) && git rev-parse --short HEAD)
-ccflags-y += -DDISP_COMMIT_ID='"$(DISP_COMMIT_ID)"'
-
-DTBO_COMMIT_ID := $(shell cd $(srctree)/arch/arm64/boot/dts/vendor/qcom/display && git rev-parse --short HEAD)
-ccflags-y += -DDTBO_COMMIT_ID='"$(DTBO_COMMIT_ID)"'
-# ... end
-
 IRIS_KROOT=dsi/iris
 
 ifeq ($(CONFIG_ARCH_LAHAINA), y)
