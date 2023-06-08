@@ -205,6 +205,7 @@ struct sde_plane_state {
 	struct sde_csc_cfg csc_cfg;
 	struct sde_csc_cfg *csc_usr_ptr;
 	struct sde_csc_cfg *csc_ptr;
+
 };
 
 /**
