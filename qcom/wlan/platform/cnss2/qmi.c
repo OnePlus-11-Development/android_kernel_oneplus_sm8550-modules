@@ -7,6 +7,13 @@
 #include <linux/module.h>
 #include <linux/soc/qcom/qmi.h>
 
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//Modify for: multi projects using different bdf
+#include <linux/fs.h>
+#include <asm/uaccess.h>
+#include <soc/oplus/system/oplus_project.h>
+#endif /* OPLUS_FEATURE_WIFI_BDF */
+
 #include "bus.h"
 #include "debug.h"
 #include "main.h"
@@ -28,6 +35,16 @@
 #define REGDB_FILE_NAME			"regdb.bin"
 #define HDS_FILE_NAME			"hds.bin"
 #define CHIP_ID_GF_MASK			0x10
+
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//Modify for: multi projects using different bdf
+#define BDF_FILE_NA		"bdwlan.b0a"
+#define BDF_FILE_EU		"bdwlan.b0e"
+#define BDF_FILE_IN		"bdwlan.b0i"
+#define REG_ID_IN		21
+#define REG_ID_EU		22
+#define REG_ID_NA		23
+#endif /* OPLUS_FEATURE_WIFI_BDF */
 
 #define CONN_ROAM_FILE_NAME		"wlan-connection-roaming"
 #define INI_EXT			".ini"
@@ -668,6 +685,24 @@ static char *cnss_bdf_type_to_str(enum cnss_bdf_type bdf_type)
 	}
 }
 
+#ifdef OPLUS_FEATURE_WIFI_BDF
+//Modify for: multi projects using different bdf
+static void cnss_get_oplus_bdf_file_name(struct cnss_plat_data *plat_priv, char* file_name, u32 filename_len) {
+	int reg_id = get_Operator_Version();
+	cnss_pr_dbg("region id: %d", reg_id);
+
+	if (reg_id == REG_ID_IN) {
+		snprintf(file_name, filename_len, BDF_FILE_IN);
+	} else if (reg_id == REG_ID_EU) {
+		snprintf(file_name, filename_len, BDF_FILE_EU);
+	} else if (reg_id == REG_ID_NA) {
+		snprintf(file_name, filename_len, BDF_FILE_NA);
+	} else {
+		snprintf(file_name, filename_len, ELF_BDF_FILE_NAME);
+	}
+}
+#endif /* OPLUS_FEATURE_WIFI_BDF */
+
 static int cnss_get_bdf_file_name(struct cnss_plat_data *plat_priv,
 				  u32 bdf_type, char *filename,
 				  u32 filename_len)
@@ -679,12 +714,17 @@ static int cnss_get_bdf_file_name(struct cnss_plat_data *plat_priv,
 	case CNSS_BDF_ELF:
 		/* Board ID will be equal or less than 0xFF in GF mask case */
 		if (plat_priv->board_info.board_id == 0xFF) {
+#ifndef OPLUS_FEATURE_WIFI_BDF
+//Modify for: multi projects using different bdf
 			if (plat_priv->chip_info.chip_id & CHIP_ID_GF_MASK)
 				snprintf(filename_tmp, filename_len,
 					 ELF_BDF_FILE_NAME_GF);
 			else
 				snprintf(filename_tmp, filename_len,
 					 ELF_BDF_FILE_NAME);
+#else
+			cnss_get_oplus_bdf_file_name(plat_priv, filename_tmp, filename_len);
+#endif /* OPLUS_FEATURE_WIFI_BDF */
 		} else if (plat_priv->board_info.board_id < 0xFF) {
 			if (plat_priv->chip_info.chip_id & CHIP_ID_GF_MASK)
 				snprintf(filename_tmp, filename_len,
