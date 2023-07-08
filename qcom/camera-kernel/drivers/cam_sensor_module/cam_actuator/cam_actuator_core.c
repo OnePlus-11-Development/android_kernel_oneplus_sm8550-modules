@@ -12,6 +12,11 @@
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#include "oplus_cam_actuator_core.h"
+#include "oplus_cam_actuator_dev.h"
+#endif
+
 int32_t cam_actuator_construct_default_power_setting(
 	struct cam_sensor_power_ctrl_t *power_info)
 {
@@ -278,6 +283,9 @@ int32_t cam_actuator_apply_settings(struct cam_actuator_ctrl_t *a_ctrl,
 				"Success:request ID: %d",
 				i2c_set->request_id);
 		}
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+                a_ctrl->is_actuator_ready = FALSE;
+#endif
 	}
 
 	return rc;
@@ -602,6 +610,9 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 		}
 
 		if (a_ctrl->cam_act_state == CAM_ACTUATOR_ACQUIRE) {
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+                        cam_actuator_poll_setting_update(a_ctrl);
+#endif
 			rc = cam_actuator_power_up(a_ctrl);
 			if (rc < 0) {
 				CAM_ERR(CAM_ACTUATOR,
@@ -610,7 +621,9 @@ int32_t cam_actuator_i2c_pkt_parse(struct cam_actuator_ctrl_t *a_ctrl,
 			}
 			a_ctrl->cam_act_state = CAM_ACTUATOR_CONFIG;
 		}
-
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+                cam_actuator_poll_setting_apply(a_ctrl);
+#endif
 		rc = cam_actuator_apply_settings(a_ctrl,
 			&a_ctrl->i2c_data.init_settings);
 		if (rc < 0) {
@@ -876,6 +889,10 @@ int32_t cam_actuator_driver_cmd(struct cam_actuator_ctrl_t *a_ctrl,
 		struct cam_sensor_acquire_dev actuator_acq_dev;
 		struct cam_create_dev_hdl bridge_params;
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+		oplus_cam_actuator_sds_adjust_from_acquire(a_ctrl);
+#endif
+
 		if (a_ctrl->bridge_intf.device_hdl != -1) {
 			CAM_ERR(CAM_ACTUATOR, "Device is already acquired");
 			rc = -EINVAL;
@@ -984,6 +1001,10 @@ int32_t cam_actuator_driver_cmd(struct cam_actuator_ctrl_t *a_ctrl,
 	}
 		break;
 	case CAM_START_DEV: {
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+		oplus_cam_actuator_sds_adjust_from_start(a_ctrl);
+#endif
+
 		if (a_ctrl->cam_act_state != CAM_ACTUATOR_CONFIG) {
 			rc = -EINVAL;
 			CAM_WARN(CAM_ACTUATOR,
