@@ -71,7 +71,6 @@ void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
 	link->try_for_internal_recovery = false;
 	atomic_set(&link->eof_event_cnt, 0);
 	link->properties_mask = CAM_LINK_PROPERTY_NONE;
-	link->cont_empty_slots = 0;
 	__cam_req_mgr_reset_apply_data(link);
 
 	for (i = 0; i < MAXIMUM_LINKS_PER_SESSION - 1; i++)
@@ -280,6 +279,9 @@ static void __cam_req_mgr_find_dev_name(
 {
 	int i = 0;
 	struct cam_req_mgr_connected_device *dev = NULL;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	char trace[64] = {0};
+#endif
 
 	for (i = 0; i < link->num_devs; i++) {
 		dev = &link->l_dev[i];
@@ -291,11 +293,26 @@ static void __cam_req_mgr_find_dev_name(
 					"WQ congestion, Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %s open_req count: %u",
 					req_id, link->link_hdl, pd,
 					dev->dev_info.name, link->open_req_cnt);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+			else {
+				CAM_INFO(CAM_CRM,
+					"Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %s open_req count: %u",
+					req_id, link->link_hdl, pd,
+					dev->dev_info.name, link->open_req_cnt);
+				snprintf(trace, sizeof(trace), "KMD %d_4 Skip Frame", link->link_hdl);
+				trace_int_tag(trace, req_id);
+				trace_begin_end("Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %d_%d_%s open_req count: %d",
+				req_id, link->link_hdl, pd,
+				dev->dev_info.dev_id, dev->dev_info.dev_hdl, dev->dev_info.name, link->open_req_cnt);
+			}
+#else
 			else
 				CAM_INFO(CAM_CRM,
 					"Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %s open_req count: %u",
 					req_id, link->link_hdl, pd,
 					dev->dev_info.name, link->open_req_cnt);
+
+#endif
 		}
 	}
 }
@@ -320,6 +337,9 @@ static int __cam_req_mgr_notify_frame_skip(
 
 	for (i = 0; i < link->num_devs; i++) {
 		dev = &link->l_dev[i];
+		if (!dev)
+			continue;
+
 		pd = dev->dev_info.p_delay;
 		if (pd >= CAM_PIPELINE_DELAY_MAX) {
 			CAM_WARN(CAM_CRM, "pd %d greater than max",
@@ -430,7 +450,7 @@ static int __cam_req_mgr_notify_error_on_link(
 	struct cam_req_mgr_connected_device *dev)
 {
 	struct cam_req_mgr_core_session *session = NULL;
-	struct cam_req_mgr_message       msg = {0};
+	struct cam_req_mgr_message       msg;
 	int rc = 0, pd;
 
 	session = (struct cam_req_mgr_core_session *)link->parent;
@@ -687,14 +707,14 @@ static int32_t __cam_req_mgr_find_slot_for_req(
 }
 
 /**
- * __cam_req_mgr_disconnect_req_on_sync_link()
+ * __cam_req_mgr_disconnect_flushed_req_on_sync_link()
  *
  * @brief    : Disconnect link and sync link
  * @link     : pointer to link
  * @slot     : poniter to slot
  *
  */
-static void __cam_req_mgr_disconnect_req_on_sync_link(
+static void __cam_req_mgr_disconnect_flushed_req_on_sync_link(
 	struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_slot      *slot)
 {
@@ -757,7 +777,7 @@ static void __cam_req_mgr_flush_req_slot(
 			idx, slot->req_id, slot->status);
 
 		if ((slot->req_id > 0) && slot->num_sync_links)
-			__cam_req_mgr_disconnect_req_on_sync_link(link, slot);
+			__cam_req_mgr_disconnect_flushed_req_on_sync_link(link, slot);
 
 		/* Reset input queue slot */
 		slot->req_id = -1;
@@ -791,7 +811,6 @@ static void __cam_req_mgr_flush_req_slot(
 	link->trigger_cnt[0][CAM_TRIGGER_POINT_EOF] = 0;
 	link->trigger_cnt[1][CAM_TRIGGER_POINT_SOF] = 0;
 	link->trigger_cnt[1][CAM_TRIGGER_POINT_EOF] = 0;
-	link->cont_empty_slots = 0;
 }
 
 /**
@@ -818,9 +837,6 @@ static void __cam_req_mgr_reset_req_slot(struct cam_req_mgr_core_link *link,
 		in_q->last_applied_idx == idx ||
 		idx < 0)
 		return;
-
-	if ((slot->req_id > 0) && slot->num_sync_links)
-		__cam_req_mgr_disconnect_req_on_sync_link(link, slot);
 
 	/* Reset input queue slot */
 	slot->req_id = -1;
@@ -861,7 +877,7 @@ static void __cam_req_mgr_validate_crm_wd_timer(
 	struct cam_req_mgr_core_link *link)
 {
 	int idx = 0;
-	int next_frame_timeout, current_frame_timeout, max_frame_timeout;
+	int next_frame_timeout = 0, current_frame_timeout = 0;
 	int64_t current_req_id, next_req_id;
 	struct cam_req_mgr_req_queue *in_q = link->req.in_q;
 
@@ -897,13 +913,9 @@ static void __cam_req_mgr_validate_crm_wd_timer(
 			"Skip modifying wd timer, continue with same timeout");
 		return;
 	}
-
-	max_frame_timeout = (current_frame_timeout > next_frame_timeout) ?
-		current_frame_timeout : next_frame_timeout;
-
 	spin_lock_bh(&link->link_state_spin_lock);
 	if (link->watchdog) {
-		if ((max_frame_timeout + CAM_REQ_MGR_WATCHDOG_TIMEOUT) >
+		if ((next_frame_timeout + CAM_REQ_MGR_WATCHDOG_TIMEOUT) >
 			link->watchdog->expires) {
 			CAM_DBG(CAM_CRM,
 				"Modifying wd timer expiry from %d ms to %d ms",
@@ -911,18 +923,18 @@ static void __cam_req_mgr_validate_crm_wd_timer(
 				(next_frame_timeout +
 				 CAM_REQ_MGR_WATCHDOG_TIMEOUT));
 			crm_timer_modify(link->watchdog,
-				max_frame_timeout +
+				next_frame_timeout +
 				CAM_REQ_MGR_WATCHDOG_TIMEOUT);
-		} else if (max_frame_timeout) {
+		} else if (current_frame_timeout) {
 			CAM_DBG(CAM_CRM,
 				"Reset wd timer to frame from %d ms to %d ms",
 				link->watchdog->expires,
-				(max_frame_timeout +
+				(current_frame_timeout +
 				 CAM_REQ_MGR_WATCHDOG_TIMEOUT));
 			crm_timer_modify(link->watchdog,
-				max_frame_timeout +
+				current_frame_timeout +
 				CAM_REQ_MGR_WATCHDOG_TIMEOUT);
-		} else if (!max_frame_timeout && (link->watchdog->expires >
+		} else if (!next_frame_timeout && (link->watchdog->expires >
 			CAM_REQ_MGR_WATCHDOG_TIMEOUT)) {
 			CAM_DBG(CAM_CRM,
 				"Reset wd timer to default from %d ms to %d ms",
@@ -962,18 +974,16 @@ static int __cam_req_mgr_check_for_lower_pd_devices(
 }
 
 /**
- * __cam_req_mgr_move_to_next_req_slot()
+ * __cam_req_mgr_check_next_req_slot()
  *
  * @brief    : While streaming if input queue does not contain any pending
  *             request, req mgr still needs to submit pending request ids to
- *             devices with lower pipeline delay value. But if there are
- *             continuous max_delay empty slots, we don't need to move to
- *             next slot since the last request is applied to all devices.
+ *             devices with lower pipeline delay value.
  * @in_q     : Pointer to input queue where req mgr wil peep into
  *
  * @return   : 0 for success, negative for failure
  */
-static int __cam_req_mgr_move_to_next_req_slot(
+static int __cam_req_mgr_check_next_req_slot(
 	struct cam_req_mgr_core_link *link)
 {
 	int rc = 0;
@@ -1012,13 +1022,6 @@ static int __cam_req_mgr_move_to_next_req_slot(
 				link->link_hdl);
 			return rc;
 		}
-
-		if (link->cont_empty_slots++ >= link->max_delay) {
-			CAM_DBG(CAM_CRM, "There are %d continuous empty slots on link 0x%x",
-				link->cont_empty_slots, link->link_hdl);
-			return -EAGAIN;
-		}
-
 		__cam_req_mgr_in_q_skip_idx(in_q, idx);
 		slot->status = CRM_SLOT_STATUS_REQ_ADDED;
 		if (in_q->wr_idx != idx)
@@ -1026,10 +1029,7 @@ static int __cam_req_mgr_move_to_next_req_slot(
 				"CHECK here wr %d, rd %d", in_q->wr_idx, idx);
 		else
 			__cam_req_mgr_inc_idx(&in_q->wr_idx, 1, in_q->num_slots);
-	} else
-		link->cont_empty_slots = 0;
-
-	__cam_req_mgr_inc_idx(&in_q->rd_idx, 1, in_q->num_slots);
+	}
 
 	return rc;
 }
@@ -1056,6 +1056,9 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 	struct cam_req_mgr_link_evt_data     evt_data;
 	struct cam_req_mgr_tbl_slot          *slot = NULL;
 	struct cam_req_mgr_apply             *apply_data = NULL;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	char trace[64] = {0};
+#endif
 
 	apply_req.link_hdl = link->link_hdl;
 	apply_req.report_if_bubble = 0;
@@ -1065,11 +1068,6 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 			apply_req.re_apply = true;
 	}
 
-	if (link->state == CAM_CRM_LINK_STATE_ERR)
-		apply_req.recovery = true;
-	else
-		apply_req.recovery = false;
-
 	apply_data = link->req.apply_data;
 
 	/*
@@ -1078,6 +1076,8 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 	 */
 	for (i = 0; i < link->num_devs; i++) {
 		dev = &link->l_dev[i];
+		if (!dev)
+			continue;
 		pd = dev->dev_info.p_delay;
 		if (pd >= CAM_PIPELINE_DELAY_MAX) {
 			CAM_WARN(CAM_CRM, "pd %d greater than max",
@@ -1260,6 +1260,10 @@ static int __cam_req_mgr_send_req(struct cam_req_mgr_core_link *link,
 				req_applied_to_min_pd = apply_req.request_id;
 
 			trace_cam_req_mgr_apply_request(link, &apply_req, dev);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+			snprintf(trace, sizeof(trace), "KMD %d_5 ApplyRequest %d_%s", apply_req.link_hdl, dev->dev_info.dev_id, dev->dev_info.name);
+			trace_int_tag(trace, apply_req.request_id);
+#endif
 		}
 	}
 	if (rc < 0) {
@@ -1971,6 +1975,9 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 	enum crm_req_eof_trigger_type        eof_trigger_type;
 	struct cam_req_mgr_core_link
 		*sync_link[MAXIMUM_LINKS_PER_SESSION - 1];
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	char trace[64] = {0};
+#endif
 
 	session = (struct cam_req_mgr_core_session *)link->parent;
 	if (!session) {
@@ -2006,6 +2013,21 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 		in_q->slot[in_q->rd_idx].req_id, in_q->rd_idx,
 		in_q->slot[in_q->rd_idx].status, link->link_hdl,
 		in_q->slot[in_q->rd_idx].additional_timeout, trigger);
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	snprintf(trace, sizeof(trace), "KMD %d_3 Process Request %d", link->link_hdl, trigger);
+	trace_int_tag(trace, in_q->slot[in_q->rd_idx].req_id);
+	if (in_q->slot[in_q->rd_idx].req_id == -1) {
+		memset(trace, 0, sizeof(trace));
+		snprintf(trace, sizeof(trace), "KMD %d_4 Skip Frame", link->link_hdl);
+		trace_int_tag(trace, in_q->slot[in_q->rd_idx].req_id);
+		trace_begin_end("%s Req[%lld] idx %d req_status %d link_hdl %x wd_timeout %d ms trigger:%d",
+			((trigger == CAM_TRIGGER_POINT_SOF) ? "SOF" : "EOF"),
+			in_q->slot[in_q->rd_idx].req_id, in_q->rd_idx,
+			in_q->slot[in_q->rd_idx].status, link->link_hdl,
+			in_q->slot[in_q->rd_idx].additional_timeout, trigger);
+	}
+#endif
 
 	slot = &in_q->slot[in_q->rd_idx];
 
@@ -2432,7 +2454,7 @@ static int __cam_req_mgr_process_sof_freeze(void *priv, void *data)
 	struct cam_req_mgr_core_link    *link = NULL;
 	struct cam_req_mgr_req_queue    *in_q = NULL;
 	struct cam_req_mgr_core_session *session = NULL;
-	struct cam_req_mgr_message       msg = {0};
+	struct cam_req_mgr_message       msg;
 	int rc = 0;
 	int64_t last_applied_req_id = -EINVAL;
 
@@ -2588,6 +2610,9 @@ static int __cam_req_mgr_disconnect_link(struct cam_req_mgr_core_link *link)
 	/* Using device ops unlink devices */
 	for (i = 0; i < link->num_devs; i++) {
 		dev = &link->l_dev[i];
+		if (dev == NULL)
+			continue;
+
 		link_data.dev_hdl = dev->dev_hdl;
 		if (dev->ops && dev->ops->link_setup) {
 			rc = dev->ops->link_setup(&link_data);
@@ -2846,7 +2871,7 @@ static int __cam_req_mgr_try_cancel_req(struct cam_req_mgr_core_link *link,
 
 	slot = &in_q->slot[idx];
 	if ((slot->req_id > 0) && slot->num_sync_links)
-		__cam_req_mgr_disconnect_req_on_sync_link(link, slot);
+		__cam_req_mgr_disconnect_flushed_req_on_sync_link(link, slot);
 
 	switch (slot->status) {
 	case CRM_SLOT_STATUS_REQ_PENDING:
@@ -3157,6 +3182,9 @@ int cam_req_mgr_process_add_req(void *priv, void *data)
 	struct cam_req_mgr_tbl_slot         *slot = NULL;
 	struct crm_task_payload             *task_data = NULL;
 	struct cam_req_mgr_slot             *link_slot = NULL;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	char trace[64] = {0};
+#endif
 
 	if (!data || !priv) {
 		CAM_ERR(CAM_CRM, "input args NULL %pK %pK", data, priv);
@@ -3306,6 +3334,10 @@ int cam_req_mgr_process_add_req(void *priv, void *data)
 		slot->req_ready_map);
 
 	trace_cam_req_mgr_add_req(link, idx, add_req, tbl, device);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	snprintf(trace, sizeof(trace), "KMD %d_2 AddRequest %d_%s", add_req->link_hdl, device->dev_info.dev_id, device->dev_info.name);
+	trace_int_tag(trace, add_req->req_id);
+#endif
 
 	if (slot->req_ready_map == tbl->dev_mask) {
 		CAM_DBG(CAM_REQ,
@@ -3511,6 +3543,9 @@ static void cam_req_mgr_notify_eof_event(struct cam_req_mgr_core_link *link)
 
 	for (i = 0; i < link->num_devs; i++) {
 		dev = &link->l_dev[i];
+		if (!dev)
+			continue;
+
 		evt_data.dev_hdl = dev->dev_hdl;
 		evt_data.evt_type = CAM_REQ_MGR_LINK_EVT_EOF;
 		evt_data.link_hdl = link->link_hdl;
@@ -3632,14 +3667,17 @@ static int cam_req_mgr_process_trigger(void *priv, void *data)
 		 */
 		CAM_DBG(CAM_CRM, "link[%x] Req[%lld] invalidating slot",
 			link->link_hdl, in_q->slot[in_q->rd_idx].req_id);
-		rc = __cam_req_mgr_move_to_next_req_slot(link);
+		rc = __cam_req_mgr_check_next_req_slot(link);
 		if (rc) {
 			CAM_DBG(CAM_REQ,
 				"No pending req to apply to lower pd devices");
 			rc = 0;
 			__cam_req_mgr_notify_frame_skip(link, trigger_data->trigger);
+			__cam_req_mgr_inc_idx(&in_q->rd_idx,
+				1, in_q->num_slots);
 			goto release_lock;
 		}
+		__cam_req_mgr_inc_idx(&in_q->rd_idx, 1, in_q->num_slots);
 	}
 
 	rc = __cam_req_mgr_process_req(link, trigger_data);
@@ -3687,6 +3725,13 @@ static int cam_req_mgr_cb_add_req(struct cam_req_mgr_add_request *add_req)
 		__cam_req_mgr_dev_handle_to_name(add_req->dev_hdl, link),
 		add_req->dev_hdl, add_req->req_id, add_req->trigger_eof,
 		link->state);
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	trace_begin_end("ReqMgr AddRequest dev name %s dev_hdl %d dev req %lld, skip_before_applying %d link_state %d",
+		__cam_req_mgr_dev_handle_to_name(add_req->dev_hdl, link),
+		add_req->dev_hdl, add_req->req_id, add_req->trigger_eof,
+		link->state);
+#endif
 
 	mutex_lock(&link->lock);
 	/* Validate if req id is present in input queue */
@@ -4804,6 +4849,9 @@ int cam_req_mgr_schedule_request_v2(
 	struct crm_task_payload              task_data;
 	struct cam_req_mgr_sched_request_v2 *sched;
 	struct cam_req_mgr_core_link        *sync_links[MAXIMUM_LINKS_PER_SESSION];
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	char trace[64] = {0};
+#endif
 
 	mutex_lock(&g_crm_core_dev->crm_lock);
 
@@ -4893,6 +4941,10 @@ int cam_req_mgr_schedule_request_v2(
 
 	CAM_DBG(CAM_REQ, "Open req %lld on link 0x%x with sync_mode %d",
 		sched_req->req_id, sched_req->link_hdl, sched_req->sync_mode);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	snprintf(trace, sizeof(trace), "KMD %d_1 OpenRequest", sched_req->link_hdl);
+	trace_int_tag(trace, sched_req->req_id);
+#endif
 end:
 	mutex_unlock(&g_crm_core_dev->crm_lock);
 	return rc;
@@ -5199,6 +5251,10 @@ int cam_req_mgr_link_properties(struct cam_req_mgr_link_properties *properties)
 
 	for (i = 0; i < link->num_devs; i++) {
 		dev = &link->l_dev[i];
+
+		if (!dev)
+			continue;
+
 		evt_data.dev_hdl = dev->dev_hdl;
 		evt_data.link_hdl = link->link_hdl;
 		evt_data.evt_type = CAM_REQ_MGR_LINK_EVT_UPDATE_PROPERTIES;

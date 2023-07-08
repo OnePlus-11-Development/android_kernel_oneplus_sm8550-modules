@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _CPASTOP_V640_200_H_
@@ -158,7 +157,7 @@ static struct cam_camnoc_specific
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5838, /* URGENCY_LOW */
-			.value = 0x00001030,
+			.value = 0x00000030,
 		},
 		.danger_lut = {
 			.enable = true,
@@ -204,7 +203,7 @@ static struct cam_camnoc_specific
 			.value = 0x0,
 		},
 		.maxwr_low = {
-			.enable = false,
+			.enable = true,
 			.access_type = CAM_REG_TYPE_READ,
 			.masked_value = 0,
 			.offset = 0x5820, /* UBWC_MAXWR_LOW */
@@ -220,21 +219,21 @@ static struct cam_camnoc_specific
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5A30, /* PRIORITYLUT_LOW */
-			.value = 0x33333333,
+			.value = 0x55554433,
 		},
 		.priority_lut_high = {
 			.enable = true,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5A34, /* PRIORITYLUT_HIGH */
-			.value = 0x33333333,
+			.value = 0x66666666,
 		},
 		.urgency = {
 			.enable = true,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5A38, /* URGENCY_LOW */
-			.value = 0x00001030,
+			.value = 0x00000003,
 		},
 		.danger_lut = {
 			.enable = true,
@@ -280,7 +279,7 @@ static struct cam_camnoc_specific
 			.value = 0x0,
 		},
 		.maxwr_low = {
-			.enable = false,
+			.enable = true,
 			.access_type = CAM_REG_TYPE_READ,
 			.masked_value = 0,
 			.offset = 0x5A20, /* STATS_MAXWR_LOW */
@@ -292,14 +291,14 @@ static struct cam_camnoc_specific
 		.port_name = "OPE_BPS_WR",
 		.enable = true,
 		.priority_lut_low = {
-			.enable = true,
+			.enable = false,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5C30, /* PRIORITYLUT_LOW */
 			.value = 0x33333333,
 		},
 		.priority_lut_high = {
-			.enable = true,
+			.enable = false,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5C34, /* PRIORITYLUT_HIGH */
@@ -356,7 +355,7 @@ static struct cam_camnoc_specific
 			.value = 0x0,
 		},
 		.maxwr_low = {
-			.enable = false,
+			.enable = true,
 			.access_type = CAM_REG_TYPE_READ,
 			.masked_value = 0,
 			.offset = 0x5C20, /* MAXWR_LOW */
@@ -372,21 +371,21 @@ static struct cam_camnoc_specific
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5E30, /* IPE_WR_PRIORITYLUT_LOW */
-			.value = 0x55554433,
+			.value = 0x33333333,
 		},
 		.priority_lut_high = {
 			.enable = true,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5E34, /* IPE_WR_PRIORITYLUT_HIGH */
-			.value = 0x66666666,
+			.value = 0x33333333,
 		},
 		.urgency = {
 			.enable = true,
 			.access_type = CAM_REG_TYPE_READ_WRITE,
 			.masked_value = 0,
 			.offset = 0x5E38, /* IPE_WR_URGENCY_LOW */
-			.value = 0x3,
+			.value = 0x30,
 		},
 		.danger_lut = {
 			.enable = false,
@@ -501,7 +500,7 @@ static struct cam_camnoc_specific
 	{
 		.port_type = CAM_CAMNOC_ICP,
 		.port_name = "ICP",
-		.enable = false,
+		.enable = true,
 		.flag_out_set0_low = {
 			.enable = false,
 			.access_type = CAM_REG_TYPE_WRITE,
@@ -563,12 +562,5 @@ static struct cam_cpas_camnoc_qchannel cam640_cpas200_qchannel_info = {
 	.qchannel_ctrl   = 0x5C,
 	.qchannel_status = 0x60,
 };
-
-static struct cam_cpas_top_regs cam640_cpas200_cpas_top_info = {
-	.tpg_mux_sel_enabled = true,
-	.tpg_mux_sel_shift   = 0x0,
-	.tpg_mux_sel         = 0x1C,
-};
-
 #endif /* _CPASTOP_V640_200_H_ */
 

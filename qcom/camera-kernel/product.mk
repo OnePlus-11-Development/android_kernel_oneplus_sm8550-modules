@@ -7,4 +7,6 @@ endif
 
 ifeq ($(CAMERA_DLKM_ENABLED),true)
 PRODUCT_PACKAGES += camera.ko
+
+-include $(TOP)/vendor/oplus/kernel/explorer/product.mk
 endif
