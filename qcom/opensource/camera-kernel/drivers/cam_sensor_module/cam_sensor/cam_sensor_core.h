@@ -21,6 +21,23 @@ int cam_sensor_power_up(struct cam_sensor_ctrl_t *s_ctrl);
  *
  * This API powers down the camera sensor module
  */
+ 
+ #ifdef OPLUS_FEATURE_CAMERA_COMMON
+/**
+ * @s_ctrl: Sensor ctrl structure
+ *
+ * This API powers down AP module ,keep the camera sensor module on
+ */
+int cam_sensor_power_down_except_sensor(struct cam_sensor_ctrl_t *s_ctrl);
+
+/**
+ * @s_ctrl: Sensor ctrl structure
+ *
+ * This API powers down camera sensor module only
+ */
+int cam_sensor_power_down_only_sensor(struct cam_sensor_ctrl_t *s_ctrl);
+#endif
+
 int cam_sensor_power_down(struct cam_sensor_ctrl_t *s_ctrl);
 
 /**
