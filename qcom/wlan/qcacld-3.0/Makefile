@@ -13,11 +13,11 @@ M ?= $(shell pwd)
 
 ifeq ($(WLAN_ROOT),)
 KBUILD_OPTIONS += \
-    WLAN_ROOT=$(KERNEL_SRC)/$(M)/.kiwi_v2 \
-    WLAN_PLATFORM_ROOT=$(KERNEL_SRC)/$(M)/../platform \
+    WLAN_ROOT=kernel/oneplus/sm8550-modules/qcom/wlan/qcacld-3.0/.kiwi_v2 \
+    WLAN_PLATFORM_ROOT=kernel/oneplus/sm8550-modules/qcom/wlan/platform \
     WLAN_COMMON_ROOT=cmn \
-    WLAN_COMMON_INC=$(KERNEL_SRC)/$(M)/cmn \
-    WLAN_FW_API=$(KERNEL_SRC)/$(M)/../fw-api \
+    WLAN_COMMON_INC=kernel/oneplus/sm8550-modules/qcom/wlan/qcacld-3.0/cmn \
+    WLAN_FW_API=kernel/oneplus/sm8550-modules/qcom/wlan/fw-api \
     CONFIG_QCA_CLD_WLAN=m \
     CONFIG_CNSS_KIWI_V2=y \
     CONFIG_CNSS_OUT_OF_TREE=y \
