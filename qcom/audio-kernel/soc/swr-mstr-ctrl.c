@@ -812,9 +812,9 @@ static int swrm_pcm_port_config(struct swr_mstr_ctrl *swrm, u8 port_num,
 		default:
 			return 0;
 	}
-	if (swrm->version == SWRM_VERSION_1_7) {
-		reg_val = SWRM_COMP_FEATURE_CFG_DEFAULT_VAL_V1P7;
 
+	#ifdef OPLUS_ARCH_EXTENDS
+	/* Modify for fix noise, case 05404028 */
 		if (enable) {
 			if (swrm->pcm_enable_count == 0) {
 				reg_val |= SWRM_COMP_FEATURE_CFG_PCM_EN_MASK;
@@ -826,8 +826,12 @@ static int swrm_pcm_port_config(struct swr_mstr_ctrl *swrm, u8 port_num,
 				swrm->pcm_enable_count--;
 			if (swrm->pcm_enable_count == 0)
 				swr_master_write(swrm, SWRM_COMP_FEATURE_CFG, reg_val);
-		}
 	}
+	#endif /* OPLUS_ARCH_EXTENDS */
+
+        if (swrm->version == SWRM_VERSION_1_7) {
+                reg_val = SWRM_COMP_FEATURE_CFG_DEFAULT_VAL_V1P7;
+        }
 	return 0;
 }
 
@@ -1725,8 +1729,11 @@ static int swrm_slvdev_datapath_control(struct swr_master *master, bool enable)
 		}
 		clear_bit(DISABLE_PENDING, &swrm->port_req_pending);
 		swrm_cleanup_disabled_port_reqs(master);
+		#ifdef OPLUS_ARCH_EXTENDS
+		/* Modify for fix noise, case 05404028 */
 		/* reset enable_count to 0 in SSR if master is already down */
 		swrm->pcm_enable_count = 0;
+		#endif /* OPLUS_ARCH_EXTENDS */
 		if (!swrm_is_port_en(master)) {
 			dev_dbg(&master->dev, "%s: pm_runtime auto suspend triggered\n",
 				__func__);
@@ -2877,7 +2884,11 @@ static int swrm_probe(struct platform_device *pdev)
 		dev_err(swrm->dev, "missing port mapping\n");
 		goto err_pdata_fail;
 	}
+
+	#ifdef OPLUS_ARCH_EXTENDS
+	/* Modify for fix noise, case 05404028 */
 	swrm->pcm_enable_count = 0;
+	#endif /* OPLUS_ARCH_EXTENDS */
 	map_length = map_size / (3 * sizeof(u32));
 	if (num_ports > SWR_MSTR_PORT_LEN) {
 		dev_err(&pdev->dev, "%s:invalid number of swr ports\n",
@@ -3444,10 +3455,13 @@ static int swrm_runtime_suspend(struct device *dev)
 			goto exit;
 		}
 		if (!swrm->clk_stop_mode0_supp || swrm->state == SWR_MSTR_SSR) {
-			dev_err_ratelimited(dev, "%s: clk stop mode not supported or SSR entry\n",
-				__func__);
+#ifdef OPLUS_ARCH_EXTENDS
+/* avoid unnecessary attempts during SSR, cr3302742 */
 			if (swrm->state == SWR_MSTR_SSR)
 				goto chk_lnk_status;
+#endif /* OPLUS_ARCH_EXTENDS */
+			dev_err_ratelimited(dev, "%s: clk stop mode not supported or SSR entry\n",
+				__func__);
 			mutex_unlock(&swrm->reslock);
 			enable_bank_switch(swrm, 0, SWR_ROW_50, SWR_MIN_COL);
 			mutex_lock(&swrm->reslock);
@@ -3487,7 +3501,10 @@ static int swrm_runtime_suspend(struct device *dev)
 			mutex_lock(&swrm->reslock);
 			usleep_range(100, 105);
 		}
+#ifdef OPLUS_ARCH_EXTENDS
+/* avoid unnecessary attempts during SSR, cr3302742 */
 chk_lnk_status:
+#endif /* OPLUS_ARCH_EXTENDS */
 		if (!swrm_check_link_status(swrm, 0x0))
 			dev_dbg(dev, "%s:failed in disconnecting, ssr?\n",
 				__func__);
@@ -3743,15 +3760,22 @@ int swrm_wcd_notify(struct platform_device *pdev, u32 id, void *data)
 	case SWR_DEVICE_SSR_DOWN:
 		TRACE_PRINTK("%s: swr device down called\n", __func__);
 		mutex_lock(&swrm->mlock);
+#ifdef OPLUS_ARCH_EXTENDS
+/* avoid unnecessary attempts during SSR, cr3302742 */
 		mutex_lock(&swrm->devlock);
 		swrm->dev_up = false;
 		mutex_unlock(&swrm->devlock);
+#endif /* OPLUS_ARCH_EXTENDS */
 		if (swrm->state == SWR_MSTR_DOWN)
 			dev_dbg(swrm->dev, "%s:SWR master is already Down:%d\n",
 				__func__, swrm->state);
 		else
 			swrm_device_down(&pdev->dev);
 		mutex_lock(&swrm->devlock);
+#ifndef OPLUS_ARCH_EXTENDS
+/* avoid unnecessary attempts during SSR, cr3302742 */
+		swrm->dev_up = false;
+#endif /* OPLUS_ARCH_EXTENDS */
 		if (swrm->hw_core_clk_en)
 			digital_cdc_rsc_mgr_hw_vote_disable(
 				swrm->lpass_core_hw_vote, swrm->dev);

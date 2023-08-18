@@ -84,7 +84,10 @@ struct chmap_pdata {
 static int qos_vote_status;
 static bool lpi_pcm_logging_enable;
 static bool vote_against_sleep_enable;
+#ifdef OPLUS_ARCH_EXTENDS
+/* [PATCH] asoc: msm_common: add counter to reset vote at the time of SSR */
 static unsigned int vote_against_sleep_cnt;
+#endif /* OPLUS_ARCH_EXTENDS */
 
 static struct dev_pm_qos_request latency_pm_qos_req; /* pm_qos request */
 static unsigned int qos_client_active_cnt;
@@ -166,6 +169,8 @@ int snd_card_notify_user(snd_card_status_t card_status)
 {
 	snd_card_pdata->card_status = card_status;
 	sysfs_notify(&snd_card_pdata->snd_card_kobj, NULL, "card_state");
+        #ifdef OPLUS_ARCH_EXTENDS
+        /* [PATCH] asoc: msm_common: add counter to reset vote at the time of SSR */
 	if (card_status == 0) {
 		mutex_lock(&vote_against_sleep_lock);
 		vote_against_sleep_cnt = 0;
@@ -173,6 +178,7 @@ int snd_card_notify_user(snd_card_status_t card_status)
 					__func__, vote_against_sleep_cnt);
 		mutex_unlock(&vote_against_sleep_lock);
 	}
+        #endif /* OPLUS_ARCH_EXTENDS */
 	return 0;
 }
 
@@ -1024,6 +1030,13 @@ static int msm_vote_against_sleep_ctl_put(struct snd_kcontrol *kcontrol,
 
 	mutex_lock(&vote_against_sleep_lock);
 	vote_against_sleep_enable = ucontrol->value.integer.value[0];
+	#ifndef OPLUS_ARCH_EXTENDS
+	/* [PATCH] asoc: msm_common: add counter to reset vote at the time of SSR */
+	pr_debug("%s: vote against sleep enable: %d", __func__,
+			vote_against_sleep_enable);
+
+	ret = audio_prm_set_vote_against_sleep((uint8_t)vote_against_sleep_enable);
+	#else /* OPLUS_ARCH_EXTENDS */
 	pr_debug("%s: vote against sleep enable: %d sleep cnt: %d", __func__,
 			vote_against_sleep_enable, vote_against_sleep_cnt);
 
@@ -1043,6 +1056,7 @@ static int msm_vote_against_sleep_ctl_put(struct snd_kcontrol *kcontrol,
 		if (vote_against_sleep_cnt > 0)
 			vote_against_sleep_cnt--;
 	}
+	#endif /* OPLUS_ARCH_EXTENDS */
 
 	pr_debug("%s: vote against sleep vote ret: %d\n", __func__, ret);
 	mutex_unlock(&vote_against_sleep_lock);

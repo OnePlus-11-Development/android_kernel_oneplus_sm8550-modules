@@ -64,6 +64,11 @@ ifeq ($(KERNEL_BUILD), 0)
 	ifeq ($(BOARD_PLATFORM), kalama)
 		include $(AUDIO_ROOT)/config/kalamaauto.conf
 		INCS    +=  -include $(AUDIO_ROOT)/config/kalamaautoconf.h
+#ifdef OPLUS_ARCH_EXTENDS
+#Add for audio extend driver
+		-include $(AUDIO_ROOT)/oplus/config/opluskalamaauto.conf
+		INCS    +=  -include $(AUDIO_ROOT)/oplus/config/opluskalamaautoconf.h
+#endif /* OPLUS_ARCH_EXTENDS */
 	endif
 	ifeq ($(BOARD_PLATFORM), crow)
 		include $(AUDIO_ROOT)/config/crowauto.conf

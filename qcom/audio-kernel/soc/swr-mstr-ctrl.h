@@ -190,7 +190,10 @@ struct swr_mstr_ctrl {
 	int hw_core_clk_en;
 	int aud_core_clk_en;
 	int clk_src;
+        #ifdef OPLUS_ARCH_EXTENDS
+        /* Modify for fix noise, case 05404028 */
 	u32 pcm_enable_count;
+        #endif /* OPLUS_ARCH_EXTENDS */
 	u32 disable_div2_clk_switch;
 	u32 rd_fifo_depth;
 	u32 wr_fifo_depth;
