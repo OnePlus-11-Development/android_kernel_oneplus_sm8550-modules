@@ -27,6 +27,7 @@
 #define DSI_MISC_W32(dsi_phy_hw, off, val) \
 	DSI_GEN_W32_DEBUG((dsi_phy_hw)->phy_clamp_base, (dsi_phy_hw)->index, off, val)
 
+
 /**
  * enum dsi_phy_version - DSI PHY version enumeration
  * @DSI_PHY_VERSION_UNKNOWN:    Unknown version.
