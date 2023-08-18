@@ -47,6 +47,17 @@
 #include "sde_trace.h"
 #include "msm_drv.h"
 #include "sde_vm.h"
+#ifdef OPLUS_FEATURE_DISPLAY
+#include "../oplus/oplus_adfr.h"
+#include "../oplus/oplus_display_interface.h"
+#include "../oplus/oplus_display_private_api.h"
+
+extern void oplus_sde_cp_crtc_pcc_change(struct drm_crtc *crtc_drm);
+#endif /* OPLUS_FEATURE_DISPLAY */
+
+#ifdef OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT
+#include "../oplus/oplus_onscreenfingerprint.h"
+#endif /* OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT */
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -134,6 +145,9 @@ static void sde_crtc_install_noise_layer_properties(struct sde_crtc *sde_crtc,
 		struct sde_mdss_cfg *catalog, struct sde_kms_info *info);
 static void sde_cp_crtc_apply_noise(struct drm_crtc *crtc,
 		struct drm_crtc_state *state);
+#if defined(CONFIG_PXLW_IRIS) || defined(CONFIG_PXLW_SOFT_IRIS)
+int iris_backlight_update;
+#endif
 
 static inline struct sde_kms *_sde_crtc_get_kms(struct drm_crtc *crtc)
 {
@@ -265,6 +279,14 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 		*height = mode->vdisplay;
 	}
 }
+
+#ifdef OPLUS_FEATURE_DISPLAY
+struct sde_kms *_sde_crtc_get_kms_(struct drm_crtc *crtc)
+{
+	return _sde_crtc_get_kms(crtc);
+}
+EXPORT_SYMBOL(_sde_crtc_get_kms_);
+#endif /* OPLUS_FEATURE_DISPLAY */
 
 /**
  * sde_crtc_calc_fps() - Calculates fps value.
@@ -2002,7 +2024,6 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			for (i = 0; i < cstate->num_dim_layers; i++)
 				_sde_crtc_setup_dim_layer_cfg(crtc, sde_crtc,
 						mixer, &cstate->dim_layer[i]);
-			clear_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
 		}
 	}
 
@@ -3181,6 +3202,13 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 				? SDE_FENCE_SIGNAL_ERROR : SDE_FENCE_SIGNAL);
 	}
 
+#ifdef OPLUS_FEATURE_DISPLAY
+	/* OPLUS_FEATURE_ADFR, fake frame */
+	if (oplus_adfr_is_support()) {
+		sde_crtc_adfr_handle_frame_event(crtc, fevent);
+	}
+#endif /* OPLUS_FEATURE_DISPLAY */
+
 	if (fevent->event & SDE_ENCODER_FRAME_EVENT_PANEL_DEAD)
 		SDE_ERROR("crtc%d ts:%lld received panel dead event\n",
 				crtc->base.id, ktime_to_ns(fevent->ts));
@@ -4154,6 +4182,10 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	bool cont_splash_enabled = false;
 	size_t i;
 
+#if defined(CONFIG_PXLW_IRIS) || defined(CONFIG_PXLW_SOFT_IRIS)
+	iris_backlight_update = 1;
+#endif
+
 	if (!crtc->state->enable) {
 		SDE_DEBUG("crtc%d -> enable %d, skip atomic_begin\n",
 				crtc->base.id, crtc->state->enable);
@@ -4228,6 +4260,14 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			crtc == splash_display->encoder->crtc)
 			cont_splash_enabled = true;
 	}
+
+#ifdef OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT
+	if (oplus_ofp_is_supported()) {
+		if (oplus_ofp_need_pcc_change(sde_crtc)) {
+			oplus_sde_cp_crtc_pcc_change(crtc);
+		}
+	}
+#endif /* OPLUS_FEATURE_DISPLAY_ONSCREENFINGERPRINT */
 
 	if (sde_kms_is_cp_operation_allowed(sde_kms))
 		sde_cp_crtc_apply_properties(crtc);
@@ -6611,6 +6651,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			ARRAY_SIZE(e_secure_level), 0,
 			CRTC_PROP_SECURITY_LEVEL);
 
+#ifdef OPLUS_FEATURE_DISPLAY
+	msm_property_install_range(&sde_crtc->property_info,"CRTC_CUST",
+		0x0, 0, INT_MAX, 0, CRTC_PROP_CUSTOM);
+#endif /* OPLUS_FEATURE_DISPLAY */
 	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map))
 		msm_property_install_enum(&sde_crtc->property_info, "cache_state",
 			0x0, 0, e_cache_state,
@@ -6620,8 +6664,13 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 	if (test_bit(SDE_FEATURE_DIM_LAYER, catalog->features)) {
 		msm_property_install_volatile_range(&sde_crtc->property_info,
 			"dim_layer_v1", 0x0, 0, ~0, 0, CRTC_PROP_DIM_LAYER_V1);
+#ifdef OPLUS_FEATURE_DISPLAY
+		sde_kms_info_add_keyint(info, "dim_layer_v1_max_layers",
+				SDE_MAX_DIM_LAYERS-1);
+#else /* OPLUS_FEATURE_DISPLAY */
 		sde_kms_info_add_keyint(info, "dim_layer_v1_max_layers",
 				SDE_MAX_DIM_LAYERS);
+#endif /* OPLUS_FEATURE_DISPLAY */
 	}
 
 	if (catalog->mdp[0].has_dest_scaler)
@@ -6747,16 +6796,28 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 	int idx, ret;
 	uint64_t fence_user_fd;
 	uint64_t __user prev_user_fd;
+#ifdef OPLUS_FEATURE_DISPLAY
+	struct msm_drm_private *priv;
 
+	if (!crtc || !state || !property || !crtc->dev || !crtc->dev->dev_private) {
+		SDE_ERROR("invalid argument(s)\n");
+		return -EINVAL;
+	}
+	priv = crtc->dev->dev_private;
+#else /* OPLUS_FEATURE_DISPLAY */
 	if (!crtc || !state || !property) {
 		SDE_ERROR("invalid argument(s)\n");
 		return -EINVAL;
 	}
+#endif /* OPLUS_FEATURE_DISPLAY */
 
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(state);
 
 	SDE_ATRACE_BEGIN("sde_crtc_atomic_set_property");
+#ifdef OPLUS_FEATURE_DISPLAY
+	mutex_lock(&priv->dspp_lock);
+#endif /* OPLUS_FEATURE_DISPLAY */
 	/* check with cp property system first */
 	ret = sde_cp_crtc_set_property(crtc, state, property, val);
 	if (ret != -ENOENT)
@@ -6863,6 +6924,9 @@ exit:
 				property->base.id, val);
 	}
 
+#ifdef OPLUS_FEATURE_DISPLAY
+	mutex_unlock(&priv->dspp_lock);
+#endif /* OPLUS_FEATURE_DISPLAY */
 	SDE_ATRACE_END("sde_crtc_atomic_set_property");
 	return ret;
 }
