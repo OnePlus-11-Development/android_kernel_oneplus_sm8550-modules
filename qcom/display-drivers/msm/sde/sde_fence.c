@@ -11,6 +11,7 @@
 #include "msm_drv.h"
 #include "sde_kms.h"
 #include "sde_fence.h"
+#include "sde_fence_temp.h"
 
 #define TIMELINE_VAL_LENGTH		128
 #define SPEC_FENCE_FLAG_FENCE_ARRAY	0x10
