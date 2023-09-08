@@ -81,6 +81,10 @@ int cam_sensor_stop(struct cam_sensor_ctrl_t *s_ctrl);
 int cam_sensor_start(struct cam_sensor_ctrl_t *s_ctrl);
 int32_t oplus_cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,void *arg);
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+int oplus_shift_sensor_mode(struct cam_sensor_ctrl_t *s_ctrl);
+#endif
+
 int cam_sensor_power_up_advance(struct cam_sensor_ctrl_t *s_ctrl);
 int cam_sensor_power_down_advance(struct cam_sensor_ctrl_t *s_ctrl);
 

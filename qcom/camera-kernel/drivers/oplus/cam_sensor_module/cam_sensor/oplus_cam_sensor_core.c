@@ -156,7 +156,13 @@ void cam_aon_do_work(struct work_struct *work)
 		info.si_errno = 0;
 		info.si_code = 1;
 		info.si_addr = NULL;
-		rc = send_sig_info(SIGIO, &info, pg_task);
+		if(pg_task != NULL){
+			rc = send_sig_info(SIGIO, &info, pg_task);
+		}else{
+			CAM_ERR(CAM_SENSOR, "pg_task NULL");
+			return;
+		}
+
 		if (rc < 0) {
 			CAM_ERR(CAM_SENSOR, "send_sig_info failed");
 			return;
@@ -609,6 +615,20 @@ int cam_sensor_match_id_oem(struct cam_sensor_ctrl_t *s_ctrl,uint32_t chip_id)
 		s_ctrl->sensordata->id_info.sensor_id_reg_addr,
 		&vendor_id,s_ctrl->sensordata->id_info.sensor_addr_type,
 		CAMERA_SENSOR_I2C_TYPE_BYTE, true);
+
+	if(rc < 0)
+	{
+		usleep_range(1000, 1010);
+		cam_sensor_power_down_advance(s_ctrl);
+		usleep_range(1000, 1010);
+		cam_sensor_power_up_advance(s_ctrl);
+		rc=camera_io_dev_read(
+			&(s_ctrl->io_master_info),
+			s_ctrl->sensordata->id_info.sensor_id_reg_addr,
+			&vendor_id,s_ctrl->sensordata->id_info.sensor_addr_type,
+			CAMERA_SENSOR_I2C_TYPE_BYTE, true);
+	}
+
 	CAM_DBG(CAM_SENSOR, "read vendor_id_addr=0x%x module vendor_id: 0x%x, rc=%d",
 		s_ctrl->sensordata->id_info.sensor_id_reg_addr,
 		vendor_id,
@@ -656,6 +676,7 @@ uint32_t cam_override_chipid(struct cam_sensor_ctrl_t *s_ctrl)
 	const uint32_t IMX766_FIRST_SOURCE_CHIPID = 0x766F;
 	const uint32_t IMX766_SECOND_SOURCE_CHIPID = 0x766E;
 
+/*
 	struct cam_sensor_cci_client ee_cci_client_day;
 	uint32_t IMX766_EEPROM_PRODUCE_DAY = 0x00;
 	uint32_t IMX766_EEPROM_PRODUCE_MONTH = 0x00;
@@ -665,7 +686,7 @@ uint32_t cam_override_chipid(struct cam_sensor_ctrl_t *s_ctrl)
 	const uint8_t IMX766_EEPROM_PRODUCE_MONTH_ADDR = 0x03;
 	const uint8_t IMX766_EEPROM_PRODUCE_YEAR_ADDR = 0x04;
 	const uint8_t IMX766_EEPROM_PRODUCE_YEAR1_ADDR = 0x05;
-
+*/
 	slave_info = &(s_ctrl->sensordata->slave_info);
 
 	if (!slave_info)
@@ -674,7 +695,7 @@ uint32_t cam_override_chipid(struct cam_sensor_ctrl_t *s_ctrl)
 			 slave_info);
 		return -EINVAL;
 	}
-
+/*
 	if (slave_info->sensor_id == 0x0766)
 	{
 		memcpy(&ee_cci_client_day, s_ctrl->io_master_info.cci_client,
@@ -706,6 +727,11 @@ uint32_t cam_override_chipid(struct cam_sensor_ctrl_t *s_ctrl)
 			IMX766_EEPROM_PRODUCE_MONTH,
 			IMX766_EEPROM_PRODUCE_DAY);
 	}
+*/
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	oplus_shift_sensor_mode(s_ctrl);
+#endif
+
 	if (slave_info->sensor_id == IMX766_FIRST_SOURCE_CHIPID || \
 		slave_info->sensor_id == IMX766_SECOND_SOURCE_CHIPID)
 	{
@@ -739,7 +765,25 @@ uint32_t cam_override_chipid(struct cam_sensor_ctrl_t *s_ctrl)
 			slave_info->sensor_id_reg_addr,
 			&chipid, CAMERA_SENSOR_I2C_TYPE_WORD,
 			CAMERA_SENSOR_I2C_TYPE_WORD, false);
+
+		if(rc < 0)
+		{
+			usleep_range(1000, 1010);
+			cam_sensor_power_down_advance(s_ctrl);
+			usleep_range(1000, 1010);
+			cam_sensor_power_up_advance(s_ctrl);
+			rc = camera_io_dev_read(
+				&(s_ctrl->io_master_info),
+				slave_info->sensor_id_reg_addr,
+				&chipid, CAMERA_SENSOR_I2C_TYPE_WORD,
+				CAMERA_SENSOR_I2C_TYPE_WORD, false);
+		}
+
 	}
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	oplus_shift_sensor_mode(s_ctrl);
+#endif
 
 	return chipid;
 }
@@ -790,6 +834,39 @@ int oplus_cam_sensor_update_setting(struct cam_sensor_ctrl_t *s_ctrl)
 	}
 	return rc;
 }
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+int oplus_shift_sensor_mode(struct cam_sensor_ctrl_t *s_ctrl)
+{
+	int rc=0;
+	struct cam_camera_slave_info *slave_info;
+	struct cam_sensor_i2c_reg_array ov32c_array;
+	struct cam_sensor_i2c_reg_setting ov32c_array_write;
+
+	slave_info = &(s_ctrl->sensordata->slave_info);
+
+	if(slave_info->sensor_id == 0x3243)
+	{
+		CAM_ERR(CAM_SENSOR, "sid: %x", s_ctrl->io_master_info.cci_client->sid);
+		s_ctrl->io_master_info.cci_client->sid = 0x30 >> 1;
+		ov32c_array.reg_addr = 0x1001;
+		ov32c_array.reg_data = 0x4;
+		ov32c_array.delay = 0x00;
+		ov32c_array.data_mask = 0x00;
+		ov32c_array_write.reg_setting = &ov32c_array;
+		ov32c_array_write.size = 1;
+		ov32c_array_write.addr_type = CAMERA_SENSOR_I2C_TYPE_WORD;
+		ov32c_array_write.data_type = CAMERA_SENSOR_I2C_TYPE_BYTE;
+		ov32c_array_write.delay = 1;
+
+		rc = camera_io_dev_write(&(s_ctrl->io_master_info),&ov32c_array_write);
+		CAM_INFO(CAM_SENSOR, "write result %d", rc);
+		mdelay(1);
+		s_ctrl->io_master_info.cci_client->sid = 0x20 >> 1;
+	}
+	return rc;
+}
+#endif
 
 int sensor_start_thread(void *arg)
 {
@@ -950,7 +1027,7 @@ int cam_sensor_power_up_advance(struct cam_sensor_ctrl_t *s_ctrl)
 	}
 	else
 	{
-		CAM_ERR(CAM_SENSOR, "sensor have power up!");
+		CAM_INFO(CAM_SENSOR, "sensor have power up!");
 	}
 	mutex_unlock(&(s_ctrl->sensor_power_state_mutex));
 	return rc;
@@ -988,7 +1065,7 @@ int cam_sensor_power_down_advance(struct cam_sensor_ctrl_t *s_ctrl)
 	}
 	else
 	{
-		CAM_ERR(CAM_SENSOR, "sensor have power down!");
+		CAM_INFO(CAM_SENSOR, "sensor have power down!");
 	}
 	mutex_unlock(&(s_ctrl->sensor_power_state_mutex));
 	return rc;
@@ -1033,7 +1110,7 @@ int cam_sensor_start(struct cam_sensor_ctrl_t *s_ctrl)
 int cam_sensor_stop(struct cam_sensor_ctrl_t *s_ctrl)
 {
 	int rc = 0;
-	CAM_ERR(CAM_SENSOR,"sensor do stop");
+	CAM_INFO(CAM_SENSOR,"sensor do stop");
 	mutex_lock(&(s_ctrl->cam_sensor_mutex));
 
 	//power off for sensor

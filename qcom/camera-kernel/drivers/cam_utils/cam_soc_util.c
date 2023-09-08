@@ -2472,6 +2472,20 @@ int cam_soc_util_get_dt_properties(struct cam_hw_soc_info *soc_info)
 	if (of_find_property(of_node, "qcom,cam-cx-ipeak", NULL))
 		rc = cam_cx_ipeak_register_cx_ipeak(soc_info);
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (of_property_read_bool(of_node,
+		"lock-cci-during-up"))
+		soc_info->lock_cci_during_up = true;
+	else
+		soc_info->lock_cci_during_up = false;
+
+	if (of_property_read_bool(of_node,
+		"lock-cci-during-down"))
+		soc_info->lock_cci_during_down = true;
+	else
+		soc_info->lock_cci_during_down = false;
+#endif
+
 	return rc;
 }
 

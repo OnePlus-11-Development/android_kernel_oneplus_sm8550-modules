@@ -321,7 +321,7 @@ int32_t EEPROM_Fm24c256eWrite(struct cam_eeprom_ctrl_t *e_ctrl,
 
 		m_eeprom_size = cam_write_eeprom->calibDataSize;
 		e_ctrl->io_master_info.cci_client->sid = 0xA2 >> 1;
-		CAM_ERR(CAM_EEPROM,
+		CAM_INFO(CAM_EEPROM,
 			"EEPROM fm24pc256e write success, calibDataSize:%d, m_eeprom_size:%d, base_addr: 0x%x",
 			cam_write_eeprom->calibDataSize,
 			m_eeprom_size,
@@ -369,7 +369,7 @@ int32_t EEPROM_Fm24c256eWrite(struct cam_eeprom_ctrl_t *e_ctrl,
 		e_ctrl->io_master_info.cci_client->sid = 0xA2 >> 1;
 	}
 
-	CAM_ERR(CAM_EEPROM, "calibDataSize exit!!!, rc: %d", rc);
+	CAM_INFO(CAM_EEPROM, "calibDataSize exit!!!, rc: %d", rc);
 	if (i2c_reg_arrays != NULL ) {
 		kfree(i2c_reg_arrays);
 		i2c_reg_arrays = NULL;
@@ -395,7 +395,7 @@ int32_t EEPROM_CommonWrite(struct cam_eeprom_ctrl_t *e_ctrl,
 	i2c_reg_settings.data_type = CAMERA_SENSOR_I2C_TYPE_BYTE;
 	i2c_reg_settings.delay = WRITE_DATA_DELAY;
 
-	CAM_ERR(CAM_EEPROM, "entry write eeprom");
+	CAM_INFO(CAM_EEPROM, "entry write eeprom");
 
 	//disable write protection
 	if (cam_write_eeprom->isWRP == 0x01) {
@@ -429,7 +429,7 @@ int32_t EEPROM_CommonWrite(struct cam_eeprom_ctrl_t *e_ctrl,
 			 i2c_reg_array.reg_addr, &readcalibData,
 			 CAMERA_SENSOR_I2C_TYPE_WORD,
 			 CAMERA_SENSOR_I2C_TYPE_BYTE, false);
-			 CAM_ERR(CAM_EEPROM, "cam_write_eeprom->eepromName :%s  set reg_data:0x%x cam reg_addr:0x%x, WRPaddr: 0x%x",  cam_write_eeprom->eepromName,i2c_reg_array.reg_data,i2c_reg_array.reg_addr,readcalibData);
+			 CAM_INFO(CAM_EEPROM, "cam_write_eeprom->eepromName :%s  set reg_data:0x%x cam reg_addr:0x%x, WRPaddr: 0x%x",  cam_write_eeprom->eepromName,i2c_reg_array.reg_data,i2c_reg_array.reg_addr,readcalibData);
 		if (rc) {
 			CAM_ERR(CAM_EEPROM, "read WRPaddr failed rc %d",rc);
 			return rc;
@@ -442,11 +442,11 @@ int32_t EEPROM_CommonWrite(struct cam_eeprom_ctrl_t *e_ctrl,
 				return rc;
 			}
 
-			CAM_ERR(CAM_EEPROM, "write!cam: WRPaddr: 0x%x", readcalibData);
+			CAM_INFO(CAM_EEPROM, "write!cam: WRPaddr: 0x%x", readcalibData);
 			msleep(30);
 		}
 	}
-	CAM_ERR(CAM_EEPROM, "write start, cam: ID: 0x%x, reg_addr: 0x%x, val: %d",
+	CAM_INFO(CAM_EEPROM, "write start, cam: ID: 0x%x, reg_addr: 0x%x, val: %d",
 				cam_write_eeprom->cam_id,
 				cam_write_eeprom->baseAddr,
 				cam_write_eeprom->calibData[0]);
@@ -520,10 +520,10 @@ int32_t EEPROM_CommonWrite(struct cam_eeprom_ctrl_t *e_ctrl,
 				CAM_ERR(CAM_EEPROM, "write WRPaddr failed rc %d",rc);
 				return rc;
 			}
-			CAM_ERR(CAM_EEPROM, "write!cam: WRPaddr: 0x%x", readcalibData);
+			CAM_INFO(CAM_EEPROM, "write!cam: WRPaddr: 0x%x", readcalibData);
 		}
 	}
-	CAM_ERR(CAM_EEPROM, "exit write eeprom !!!");
+	CAM_INFO(CAM_EEPROM, "exit write eeprom !!!");
 
 	return rc;
 }

@@ -42,7 +42,12 @@
 #define CYCLES_PER_MICRO_SEC_DEFAULT 4915
 #define CCI_MAX_DELAY 1000000
 
-#define CCI_TIMEOUT msecs_to_jiffies(1500)
+#define CCI_TIMEOUT msecs_to_jiffies(500)
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+#define CCI_TIMEOUT_10 msecs_to_jiffies(10)
+#define CCI_TIMEOUT_100 msecs_to_jiffies(100)
+#define CCI_TIMEOUT_200 msecs_to_jiffies(200)
+#endif
 #define NUM_QUEUES 2
 
 #define MSM_CCI_WRITE_DATA_PAYLOAD_SIZE_11 11
@@ -94,6 +99,10 @@ enum cam_cci_cmd_type {
 	MSM_CCI_GPIO_WRITE,
 	MSM_CCI_I2C_WRITE_SYNC,
 	MSM_CCI_I2C_WRITE_SYNC_BLOCK,
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	MSM_CCI_I2C_LOCK,
+	MSM_CCI_I2C_UNLOCK,
+#endif
 };
 
 enum cci_i2c_queue_t {
@@ -237,6 +246,9 @@ struct cci_device {
 	bool is_burst_read[MASTER_MAX];
 	uint32_t irqs_disabled;
 	struct mutex init_mutex;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	struct mutex master_mutex[MASTER_MAX];
+#endif
 	uint64_t  dump_en;
 	bool is_probing;
 };

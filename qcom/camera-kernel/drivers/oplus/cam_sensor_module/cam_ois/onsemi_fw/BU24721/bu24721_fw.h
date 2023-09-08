@@ -18,8 +18,8 @@
 #define FM_wri_pro		0xFF0F
 #define FM_era			0x8000
 
-#define	SUM_C	0x002A4D94
-#define	SUM_D	0x0001F16B
+#define	SUM_C	0x002A72BC
+#define	SUM_D	0x0001FB99
 #define	LEN_1	0x1000
 #define	LEN_2	0x0000
 #define	LEN_3	0x0000
@@ -40,7 +40,7 @@
 #define	FLASH_DATA_BIN_6_START	0x2900
 //#define	FLASH_DATA_BIN_7_START	0x2C80
 #define FLASH_DATA_CAL_START	0x3F70
-#define Pro_ID_0				0x1A890763
+#define Pro_ID_0				0x1A890893
 #define FW_ID					0xF01C
 #define OIS_status				0xF024
 #define OIS_control				0xF020
@@ -203,9 +203,10 @@ void		Gyro_data(OIS_UBYTE count, OIS_UBYTE gyro_type);
 void		Boot_err_sla_change (void);
 void 		Flash_sla_change (void);
 void 		Hall_data(OIS_UBYTE count);
-int		Rohm_bu24721_fw_download(bool isTeleOisUseMonitor);
+int		Rohm_bu24721_fw_download(void);
 void		WriteGyroGainToFlash(void);
 
 //int			debug_print(const char * format,...)(const char *format, ...);
 
+int			bu24721_do_push_center(void);
 #endif  // BU24721_FW_H

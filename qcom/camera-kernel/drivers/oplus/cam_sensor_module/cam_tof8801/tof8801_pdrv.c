@@ -119,7 +119,7 @@ static int cam_tof_power_up(struct cam_tof_ctrl_t *tof_ctrl)
 
 	power_info->dev = soc_info->dev;
 
-	rc = cam_sensor_core_power_up(power_info, soc_info, i3c_probe_completion);
+	rc = cam_sensor_core_power_up(power_info, soc_info, i3c_probe_completion, &(tof_ctrl->io_master_info));
 	if (rc) {
 		CAM_ERR(CAM_TOF, "failed in tof power up rc %d", rc);
 		return rc;
@@ -133,7 +133,7 @@ static int cam_tof_power_up(struct cam_tof_ctrl_t *tof_ctrl)
 	return rc;
 
 cci_failure:
-	if (cam_sensor_util_power_down(power_info, soc_info))
+	if (cam_sensor_util_power_down(power_info, soc_info, &(tof_ctrl->io_master_info)))
 		CAM_ERR(CAM_TOF, "Power down failure");
 	return rc;
 }
@@ -154,7 +154,7 @@ static int cam_tof_power_down(struct cam_tof_ctrl_t *tof_ctrl)
 		return -EINVAL;
 	}
 
-	rc = cam_sensor_util_power_down(power_info, soc_info);
+	rc = cam_sensor_util_power_down(power_info, soc_info, &(tof_ctrl->io_master_info));
 	if (rc) {
 		CAM_ERR(CAM_TOF, "power down the core is failed:%d", rc);
 		return rc;

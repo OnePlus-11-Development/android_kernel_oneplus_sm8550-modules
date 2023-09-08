@@ -14300,7 +14300,9 @@ static ssize_t cam_ife_hw_mgr_perfcnt_write(
 	if (size >= 16)
 		return -EINVAL;
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
 	if (copy_from_user(input_buf, ubuf, size))
+#endif
 		return -EFAULT;
 
 	input_buf[size] = '\0';
