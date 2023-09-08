@@ -27,6 +27,7 @@
 /***** tof8801_bootloader.c *****/
 #include "tof8801.h"
 #include "tof8801_driver.h"
+#include "cam_debug_util.h"
 
 const char *tof8801_bootloader_cmd_stat_str[MAX_BL_CMD_STAT] = {
 	"READY"		 ,
@@ -105,7 +106,7 @@ int tof8801_BL_read_status(struct i2c_client *client,
 	char *rdata_size = &BL_app->BL_response.short_resp.size;
 	char chksum;
 	if (num_retries < 0)
-		num_retries = 5;
+		num_retries = 16;
 	do {
 		num_retries -= 1;
 		error = tof_i2c_read(client, TOF8801_CMD_STAT,
@@ -114,9 +115,9 @@ int tof8801_BL_read_status(struct i2c_client *client,
 			continue;
 		if (TOF8801_BL_IS_CMD_BUSY(*status)) {
 			/* CMD is still executing, wait and retry */
-			udelay(TOF8801_BL_CMD_WAIT_MSEC*1000);
+			udelay(300);
 			if (num_retries <= 0) {
-				dev_info(&client->dev, "BL application is busy: %#04x", *status);
+				CAM_ERR(CAM_TOF, "BL application is busy: %#04x", *status);
 				error = -EBUSY;
 			}
 			continue;
@@ -130,8 +131,7 @@ int tof8801_BL_read_status(struct i2c_client *client,
 				continue;
 			chksum = (char) ~tof8801_calc_chksum(rbuf, TOF8801_CALC_BL_RSP_SIZE(*rdata_size));
 			if ((chksum != TOF_VALID_CHKSUM) && (num_retries <= 0)) {
-				dev_err(&client->dev,
-						"Checksum verification of Response failed: %#04x", chksum);
+				CAM_ERR(CAM_TOF, "Checksum verification of Response failed: %#04x", chksum);
 				return -EIO;
 			}
 			/* all done, break and return */
@@ -176,7 +176,7 @@ int tof8801_BL_send_rcv_cmd(struct i2c_client *client, struct tof8801_BL_applica
 	if (error)
 		return error;
 
-	return tof8801_BL_read_status(client, BL_app, 5);
+	return tof8801_BL_read_status(client, BL_app, 16);
 }
 
 /**

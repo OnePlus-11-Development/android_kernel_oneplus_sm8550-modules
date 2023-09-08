@@ -90,6 +90,8 @@ static void TMF8801_cr_recalc(TMF8801_cr * cr)
 	cr->count	  = 0;
 }
 
+#define SKIP_DATA_NUM 3
+
 static void TMF8801_cr_addpair(TMF8801_cr * cr, uint32_t host, uint32_t i2c)
 {
 	uint32_t num = 0;
@@ -118,14 +120,14 @@ static void TMF8801_cr_addpair(TMF8801_cr * cr, uint32_t host, uint32_t i2c)
 	//
 	///////////////////////////////////////////////////////////////////////////////////
 
-	if (cr->count == 0) {
+	if (cr->count == SKIP_DATA_NUM) {
 		cr->first_host = host;
 		cr->first_i2c  = i2c;
 	}
 	cr->last_host  =  host;
 	cr->last_i2c   =  i2c;
 	cr->count	  += 1;
-	if (cr->count >= TMF8801_MINCOUNT) {
+	if (cr->count >= (TMF8801_MINCOUNT + SKIP_DATA_NUM)) {
 		cr->trim_count += 1;
 		num = cr->last_host - cr->first_host;
 		den = cr->last_i2c  - cr->first_i2c;
@@ -234,7 +236,7 @@ int tof8801_app0_wait_for_idle(void *tof_chip, unsigned long usec_timeout)
 {
 	int error = 0;
 	unsigned long curr = jiffies;
-	unsigned char cpu_stat, state;
+	unsigned char cpu_stat, state = OL_STATE_ERROR;
 	struct tof_sensor_chip *chip = (struct tof_sensor_chip *)tof_chip;
 	do {
 		error = tof8801_get_register(chip->client, TOF8801_STAT, &cpu_stat);

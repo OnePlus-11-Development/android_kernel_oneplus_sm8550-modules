@@ -35,7 +35,7 @@ struct cam_ois_hall_data_in_driver {
 #define ENABLE_OIS_DELAY_POWER_DOWN
 
 #ifdef ENABLE_OIS_DELAY_POWER_DOWN
-#define OIS_POWER_DOWN_DELAY 500//ms
+#define OIS_POWER_DOWN_DELAY 100//ms
 enum cam_ois_power_down_thread_state {
 	CAM_OIS_POWER_DOWN_THREAD_RUNNING,
 	CAM_OIS_POWER_DOWN_THREAD_STOPPED,

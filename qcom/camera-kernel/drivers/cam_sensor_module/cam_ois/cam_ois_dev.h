@@ -131,6 +131,7 @@ struct cam_ois_ctrl_t {
 	uint8_t ois_gyro_vendor;            //Gyro vendor
 	uint8_t ois_actuator_vendor;        //Actuator vendor
 	uint8_t ois_module_vendor;          //Module vendor
+	uint8_t ois_switch_spi_mode;
 	struct mutex ois_read_mutex;
 	bool ois_read_thread_start_to_read;
 	struct task_struct *ois_read_thread;
@@ -142,6 +143,7 @@ struct cam_ois_ctrl_t {
 	struct kfifo ois_hall_data_fifo;
 	struct kfifo ois_hall_data_fifoV2;
 	bool isTeleOisUseMonitor;
+	bool pre_isTeleOisUseMonitor;
 #ifdef ENABLE_OIS_DELAY_POWER_DOWN
 	struct mutex ois_power_down_mutex;
 	enum cam_ois_power_down_thread_state ois_power_down_thread_state;

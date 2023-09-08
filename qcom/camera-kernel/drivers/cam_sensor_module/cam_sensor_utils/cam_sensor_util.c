@@ -2059,8 +2059,14 @@ static int cam_config_mclk_reg(struct cam_sensor_power_ctrl_t *ctrl,
 	return rc;
 }
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
+		struct cam_hw_soc_info *soc_info, struct completion *i3c_probe_status,
+		struct camera_io_master *io_master)
+#else
 int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 		struct cam_hw_soc_info *soc_info, struct completion *i3c_probe_status)
+#endif
 {
 	int rc = 0, index = 0, no_gpio = 0, ret = 0, num_vreg, j = 0, i = 0;
 	int32_t vreg_idx = -1;
@@ -2083,6 +2089,11 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 		CAM_ERR(CAM_SENSOR, "failed: num_vreg %d", num_vreg);
 		return -EINVAL;
 	}
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (soc_info->lock_cci_during_up)
+		camera_io_dev_lock(io_master);
+#endif
 
 	ret = msm_camera_pinctrl_init(&(ctrl->pinctrl_info), ctrl->dev);
 	if (ret < 0) {
@@ -2115,6 +2126,10 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 			CAM_ERR(CAM_SENSOR,
 				"Invalid power up settings for index %d",
 				index);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+			if (soc_info->lock_cci_during_up)
+				camera_io_dev_unlock(io_master);
+#endif
 			return -EINVAL;
 		}
 
@@ -2300,6 +2315,11 @@ int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 		}
 	}
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (soc_info->lock_cci_during_up)
+		camera_io_dev_unlock(io_master);
+#endif
+
 	return 0;
 power_up_failed:
 	CAM_ERR(CAM_SENSOR, "failed. rc:%d", rc);
@@ -2401,6 +2421,11 @@ power_up_failed:
 	ctrl->cam_pinctrl_status = 0;
 	cam_sensor_util_request_gpio_table(soc_info, 0);
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (soc_info->lock_cci_during_up)
+		camera_io_dev_unlock(io_master);
+#endif
+
 	return -EINVAL;
 }
 
@@ -2425,8 +2450,14 @@ msm_camera_get_power_settings(struct cam_sensor_power_ctrl_t *ctrl,
 	return ps;
 }
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
+		struct cam_hw_soc_info *soc_info,
+		struct camera_io_master *io_master)
+#else
 int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 		struct cam_hw_soc_info *soc_info)
+#endif
 {
 	int index = 0, ret = 0, num_vreg = 0, i;
 	struct cam_sensor_power_setting *pd = NULL;
@@ -2453,6 +2484,11 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 		return -EINVAL;
 	}
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (soc_info->lock_cci_during_down)
+		camera_io_dev_lock(io_master);
+#endif
+
 	for (index = 0; index < ctrl->power_down_setting_size; index++) {
 		CAM_DBG(CAM_SENSOR, "power_down_index %d",  index);
 		pd = &ctrl->power_down_setting[index];
@@ -2460,6 +2496,10 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 			CAM_ERR(CAM_SENSOR,
 				"Invalid power down settings for index %d",
 				index);
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+			if (soc_info->lock_cci_during_down)
+				camera_io_dev_unlock(io_master);
+#endif
 			return -EINVAL;
 		}
 
@@ -2571,6 +2611,11 @@ int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 
 	cam_sensor_util_request_gpio_table(soc_info, 0);
 	ctrl->cam_pinctrl_status = 0;
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (soc_info->lock_cci_during_down)
+		camera_io_dev_unlock(io_master);
+#endif
 
 	return 0;
 }

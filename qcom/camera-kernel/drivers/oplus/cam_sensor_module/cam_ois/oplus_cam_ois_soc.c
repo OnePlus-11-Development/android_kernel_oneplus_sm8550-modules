@@ -105,4 +105,12 @@ void cam_ois_driver_soc_init_oem(struct cam_ois_ctrl_t *o_ctrl, struct device_no
 		CAM_INFO(CAM_OIS, "read download,fw success, value:%d", o_ctrl->cam_ois_download_fw_in_advance);
 	}
 
+	ret = of_property_read_u32(of_node, "ois_switch_spi_mode", &id);
+	if (ret) {
+		o_ctrl->ois_switch_spi_mode = 0;
+		CAM_DBG(CAM_OIS, "get ois_switch_spi_mode failed rc:%d, default %d", ret, o_ctrl->ois_switch_spi_mode);
+	} else {
+		o_ctrl->ois_switch_spi_mode = (uint8_t)id;
+		CAM_INFO(CAM_OIS, "read ois_switch_spi_mode success, value:%d", o_ctrl->ois_switch_spi_mode);
+	}
 }

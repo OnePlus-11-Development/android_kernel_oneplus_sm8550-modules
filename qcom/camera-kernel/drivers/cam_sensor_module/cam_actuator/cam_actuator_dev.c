@@ -25,9 +25,9 @@ struct completion *cam_actuator_get_i3c_completion(uint32_t index)
 #ifdef OPLUS_FEATURE_CAMERA_COMMON
 #include "oplus_cam_actuator_dev.h"
 
-#define VIDIOC_CAM_ACTUATOR_LOCK_ON 0x9003
-#define VIDIOC_CAM_ACTUATOR_LOCK_OFF 0x9004
-#define VIDIOC_CAM_ACTUATOR_SHAKE_DETECT_ON 0x9005
+#define VIDIOC_CAM_ACTUATOR_LOCK 0x9003
+#define VIDIOC_CAM_ACTUATOR_UNLOCK 0x9004
+#define VIDIOC_CAM_ACTUATOR_SHAKE_DETECT_ENABLE 0x9005
 #endif
 
 static int cam_actuator_subdev_close_internal(struct v4l2_subdev *sd,
@@ -44,6 +44,14 @@ static int cam_actuator_subdev_close_internal(struct v4l2_subdev *sd,
 	mutex_lock(&(a_ctrl->actuator_mutex));
 	cam_actuator_shutdown(a_ctrl);
 	mutex_unlock(&(a_ctrl->actuator_mutex));
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if(a_ctrl->camera_actuator_shake_detect_enable &&
+		a_ctrl->cam_act_last_state == CAM_ACTUATOR_LOCK){
+		oplus_cam_actuator_unlock(a_ctrl);
+		CAM_INFO(CAM_ACTUATOR, "oplus_cam_actuator_unlock");
+	}
+#endif
 
 	return 0;
 }
@@ -98,14 +106,18 @@ static long cam_actuator_subdev_ioctl(struct v4l2_subdev *sd,
 		rc = cam_actuator_subdev_close_internal(sd, NULL);
 		break;
 #ifdef OPLUS_FEATURE_CAMERA_COMMON
-	case VIDIOC_CAM_ACTUATOR_SHAKE_DETECT_ON:
-		oplus_cam_actuator_sds_on(a_ctrl);
+	case VIDIOC_CAM_ACTUATOR_SHAKE_DETECT_ENABLE:
+		oplus_cam_actuator_sds_enable(a_ctrl);
 		break;
-	case VIDIOC_CAM_ACTUATOR_LOCK_ON:
-		rc = oplus_cam_actuator_lock_on(a_ctrl);
+	case VIDIOC_CAM_ACTUATOR_LOCK:
+		down(&a_ctrl->actuator_sem);
+		rc = oplus_cam_actuator_lock(a_ctrl);
+		up(&a_ctrl->actuator_sem);
 		break;
-	case VIDIOC_CAM_ACTUATOR_LOCK_OFF:
-		oplus_cam_actuator_lock_off(a_ctrl);
+	case VIDIOC_CAM_ACTUATOR_UNLOCK:
+		down(&a_ctrl->actuator_sem);
+		rc = oplus_cam_actuator_unlock(a_ctrl);
+		up(&a_ctrl->actuator_sem);
 		break;
 #endif
 	default:
@@ -461,6 +473,18 @@ static int cam_actuator_platform_component_bind(struct device *dev,
 	g_i3c_actuator_data[a_ctrl->soc_info.index].a_ctrl = a_ctrl;
 	init_completion(&g_i3c_actuator_data[a_ctrl->soc_info.index].probe_complete);
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	a_ctrl->cam_act_last_state = CAM_ACTUATOR_INIT;
+	if (a_ctrl->is_update_pid)
+	{
+		CAM_INFO(CAM_ACTUATOR, "create af download fw thread");
+		a_ctrl->actuator_update_pid_thread = kthread_run(oplus_cam_actuator_update_pid, a_ctrl, a_ctrl->device_name);
+	}
+	else
+	{
+		CAM_INFO(CAM_ACTUATOR, "not need update pid");
+	}
+#endif
 	return rc;
 
 free_mem:

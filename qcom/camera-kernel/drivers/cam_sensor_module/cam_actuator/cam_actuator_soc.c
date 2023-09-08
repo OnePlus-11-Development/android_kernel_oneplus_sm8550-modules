@@ -28,6 +28,7 @@ int32_t cam_actuator_parse_dt(struct cam_actuator_ctrl_t *a_ctrl,
 	mutex_init(&(a_ctrl->actuator_mutex));
 #ifdef OPLUS_FEATURE_CAMERA_COMMON
 	mutex_init(&(a_ctrl->actuator_ioctl_mutex));
+	sema_init(&a_ctrl->actuator_sem, 1);
 #endif
 
 	rc = cam_soc_util_get_dt_properties(soc_info);
@@ -45,6 +46,17 @@ int32_t cam_actuator_parse_dt(struct cam_actuator_ctrl_t *a_ctrl,
 	}
 
 	CAM_DBG(CAM_SENSOR, "I3C Target: %s", CAM_BOOL_TO_YESNO(a_ctrl->is_i3c_device));
+
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	rc = of_property_read_bool(of_node, "is_update_pid");
+	if (rc) {
+		a_ctrl->is_update_pid = true;
+		CAM_INFO(CAM_ACTUATOR, "read is_update_pid success, value:%d", a_ctrl->is_update_pid);
+	} else {
+		a_ctrl->is_update_pid = false;
+		CAM_INFO(CAM_ACTUATOR, "get is_update_pid failed rc:%d, default %d", rc, a_ctrl->is_update_pid);
+	}
+#endif
 
 	if (a_ctrl->io_master_info.master_type == CCI_MASTER) {
 		rc = of_property_read_u32(of_node, "cci-master",
@@ -68,6 +80,18 @@ int32_t cam_actuator_parse_dt(struct cam_actuator_ctrl_t *a_ctrl,
 		CAM_DBG(CAM_ACTUATOR, "cci-device %d", a_ctrl->cci_num);
 	}
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	rc = of_property_read_u32(of_node, "is_af_parklens", &a_ctrl->is_af_parklens);
+	if (rc)
+	{
+		a_ctrl->is_af_parklens = 0;
+		CAM_INFO(CAM_ACTUATOR, "get failed for is_af_parklens = %d",a_ctrl->is_af_parklens);
+	}
+	else
+	{
+		CAM_INFO(CAM_ACTUATOR, "read is_af_parklens success, value:%d", a_ctrl->is_af_parklens);
+	}
+#endif
 	/* Initialize regulators to default parameters */
 	for (i = 0; i < soc_info->num_rgltr; i++) {
 		soc_info->rgltr[i] = devm_regulator_get(soc_info->dev,

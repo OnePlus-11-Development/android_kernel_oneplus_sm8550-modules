@@ -244,6 +244,12 @@ struct i2c_data_settings {
 	struct i2c_settings_array streamon_settings;
 	struct i2c_settings_array streamoff_settings;
 	struct i2c_settings_array read_settings;
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	struct i2c_settings_array resolution_settings;
+	struct i2c_settings_array lsc_settings;
+	struct i2c_settings_array qsc_settings;
+	struct i2c_settings_array awbotp_settings;
+#endif
 	struct i2c_settings_array *per_frame;
 	struct i2c_settings_array *frame_skip;
 	struct i2c_settings_array *bubble_update;

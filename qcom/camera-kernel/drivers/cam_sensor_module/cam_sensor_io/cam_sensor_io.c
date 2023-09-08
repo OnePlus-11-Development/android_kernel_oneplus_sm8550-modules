@@ -186,6 +186,52 @@ int32_t camera_io_dev_write_continuous(struct camera_io_master *io_master_info,
 	return -EINVAL;
 }
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+int32_t camera_io_dev_lock(struct camera_io_master *io_master_info)
+{
+	if (!io_master_info) {
+		CAM_ERR(CAM_SENSOR, "Invalid Args");
+		return -EINVAL;
+	}
+
+	if (io_master_info->master_type == CCI_MASTER) {
+		io_master_info->cci_client->cci_subdev =
+		cam_cci_get_subdev(io_master_info->cci_client->cci_device);
+		return cam_sensor_cci_i2c_util(io_master_info->cci_client,
+				MSM_CCI_I2C_LOCK);
+	} else if ((io_master_info->master_type == I2C_MASTER) ||
+				(io_master_info->master_type == SPI_MASTER)) {
+		return 0;
+	} else {
+		CAM_ERR(CAM_SENSOR, "Invalid Comm. Master:%d",
+				io_master_info->master_type);
+		return -EINVAL;
+	}
+}
+
+int32_t camera_io_dev_unlock(struct camera_io_master *io_master_info)
+{
+	if (!io_master_info) {
+		CAM_ERR(CAM_SENSOR, "Invalid Args");
+		return -EINVAL;
+	}
+
+	if (io_master_info->master_type == CCI_MASTER) {
+		io_master_info->cci_client->cci_subdev =
+		cam_cci_get_subdev(io_master_info->cci_client->cci_device);
+		return cam_sensor_cci_i2c_util(io_master_info->cci_client,
+				MSM_CCI_I2C_UNLOCK);
+	} else if ((io_master_info->master_type == I2C_MASTER) ||
+				(io_master_info->master_type == SPI_MASTER)) {
+		return 0;
+	} else {
+		CAM_ERR(CAM_SENSOR, "Invalid Comm. Master:%d",
+				io_master_info->master_type);
+		return -EINVAL;
+	}
+}
+#endif
+
 int32_t camera_io_init(struct camera_io_master *io_master_info)
 {
 	if (!io_master_info) {
