@@ -128,11 +128,14 @@ struct cam_actuator_ctrl_t {
 	struct cam_sensor_i2c_reg_array poll_register;
 	enum camera_sensor_i2c_type addr_type;
 	enum camera_sensor_i2c_type data_type;
-	bool camera_actuator_shake_detect_on;
+	bool camera_actuator_shake_detect_enable;
 	enum cam_actuator_state cam_act_last_state;
-	uint32_t ssd_actuator_cci_i2c_master_num;
-	uint32_t ssd_actuator_cci_num;
 	struct mutex actuator_ioctl_mutex;
+	struct task_struct *actuator_parklens_thread;
+	uint32_t is_af_parklens;
+	bool is_update_pid;
+	struct task_struct *actuator_update_pid_thread;
+	struct semaphore actuator_sem;
 #endif
 };
 

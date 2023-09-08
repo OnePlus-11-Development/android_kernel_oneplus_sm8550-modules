@@ -414,13 +414,13 @@ void WriteGyroGainToFlash(void)
     OIS_UWORD X_ori, Y_ori;
     X_ori = I2C_OIS_16bit__read(Gyro_gain_x);//read 0xF07A
     Y_ori = I2C_OIS_16bit__read(Gyro_gain_y);//read 0xF07C
-    CAM_ERR(CAM_OIS, "[WriteGyroGainToFlash] will write  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
+    CAM_INFO(CAM_OIS, "[WriteGyroGainToFlash] will write  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
 
     Update_GyroCalib_to_flash(0, 0, X_ori, Y_ori);
 
     X_ori = I2C_OIS_16bit__read(Gyro_gain_x);//read 0xF07A
     Y_ori = I2C_OIS_16bit__read(Gyro_gain_y);//read 0xF07C
-    CAM_ERR(CAM_OIS, "[WriteGyroGainToFlash] after write  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
+    CAM_INFO(CAM_OIS, "[WriteGyroGainToFlash] after write  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
 
 }
 
@@ -434,14 +434,14 @@ void Gyro_gain_set(OIS_UWORD X_gain, OIS_UWORD Y_gain)
     //I2C_OIS_16bit_write(Gyro_gain_y, Y_ori);
     X_ori = I2C_OIS_16bit__read(Gyro_gain_x);//read 0xF07A
     Y_ori = I2C_OIS_16bit__read(Gyro_gain_y);//read 0xF07C
-    CAM_ERR(CAM_OIS, "[Gyro_gain_set] oldGyorGain  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
-    CAM_ERR(CAM_OIS, "[Gyro_gain_set] newGyorGain  X_gain= 0x%x  Y_gain= 0x%x",X_gain, Y_gain);
+    CAM_INFO(CAM_OIS, "[Gyro_gain_set] oldGyorGain  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
+    CAM_INFO(CAM_OIS, "[Gyro_gain_set] newGyorGain  X_gain= 0x%x  Y_gain= 0x%x",X_gain, Y_gain);
     I2C_OIS_16bit_write(Gyro_gain_x, X_gain);
     I2C_OIS_16bit_write(Gyro_gain_y, Y_gain);
 
     X_ori = I2C_OIS_16bit__read(Gyro_gain_x);//read 0xF07A
     Y_ori = I2C_OIS_16bit__read(Gyro_gain_y);//read 0xF07C
-    CAM_ERR(CAM_OIS, "[Gyro_gain_set] after write  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
+    CAM_INFO(CAM_OIS, "[Gyro_gain_set] after write  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",X_ori, Y_ori);
 
 }
 
@@ -461,7 +461,7 @@ struct _FACT_ADJ Gyro_offset_cal(void) {
     resultGyorOffset.gl_GY_OFS = I2C_OIS_16bit__read(Gyro_offset_val);//0xF08A
 
 
-    CAM_ERR(CAM_OIS, "[Gyro_offset_cal] resultGyorOffset  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",resultGyorOffset.gl_GX_OFS, resultGyorOffset.gl_GY_OFS);
+    CAM_INFO(CAM_OIS, "[Gyro_offset_cal] resultGyorOffset  gl_GX_OFS= 0x%x  gl_GY_OFS= 0x%x",resultGyorOffset.gl_GX_OFS, resultGyorOffset.gl_GY_OFS);
 
     //update to register
     I2C_OIS_8bit_write(Gyro_offset_req,0x00);//0xF09C,0x00 select X axis to update
@@ -473,11 +473,11 @@ struct _FACT_ADJ Gyro_offset_cal(void) {
     I2C_OIS_8bit_write(Gyro_offset_req,0x02);//0xF09C,0x02 to output X diff value
     F024_Polling();
     diff = I2C_OIS_16bit__read(Gyro_offset_diff);//read 0xF09D to get the X diff value
-    CAM_ERR(CAM_OIS, "[Gyro_offset_cal] Gyro_offset_diff X = 0x%x",diff);
+    CAM_INFO(CAM_OIS, "[Gyro_offset_cal] Gyro_offset_diff X = 0x%x",diff);
     I2C_OIS_8bit_write(Gyro_offset_req,0x03);//0xF09C,0x02 to output Y diff value
     F024_Polling();
     diff = I2C_OIS_16bit__read(Gyro_offset_diff);//read 0xF09D to get the X diff value
-    CAM_ERR(CAM_OIS, "[Gyro_offset_cal] Gyro_offset_diff Y = 0x%x",diff);
+    CAM_INFO(CAM_OIS, "[Gyro_offset_cal] Gyro_offset_diff Y = 0x%x",diff);
 
 
     Update_GyroCalib_to_flash(resultGyorOffset.gl_GX_OFS, resultGyorOffset.gl_GY_OFS,0 ,0);
@@ -505,7 +505,7 @@ void Update_GyroCalib_to_flash(OIS_UWORD gyro_X_offset, OIS_UWORD gyro_Y_offset,
         buf[((i * 4) + 3) + 2] = (rdata >>  0);        // Store rdata[ 7: 0]
     }
     for(i = 0; i<=15; i++) {
-        CAM_ERR(CAM_OIS, "[Gyro_offset_cal] before update :buf[%d] = 0x%x", i , buf[i]);
+        CAM_INFO(CAM_OIS, "[Gyro_offset_cal] before update :buf[%d] = 0x%x", i , buf[i]);
     }
 
     // Disable Write protect
@@ -553,7 +553,7 @@ void Update_GyroCalib_to_flash(OIS_UWORD gyro_X_offset, OIS_UWORD gyro_Y_offset,
     }
 
     for(i = 0; i<=15; i++) {
-        CAM_ERR(CAM_OIS, "[Gyro_offset_cal] after update :buf[%d] = 0x%x", i , buf[i]);
+        CAM_INFO(CAM_OIS, "[Gyro_offset_cal] after update :buf[%d] = 0x%x", i , buf[i]);
     }
 
     Wait(1000);
@@ -589,6 +589,7 @@ void Update_Gyro_offset_gain_cal_from_flash(void)
 {
     //*** Just After FLASH boot is successful ***//
     OIS_UWORD en_gyrogain_update;
+/*
     OIS_UBYTE 	buf[0x200 + 2];
     OIS_ULONG 	rdata;
     OIS_ULONG 	i;
@@ -605,11 +606,9 @@ void Update_Gyro_offset_gain_cal_from_flash(void)
     for(i = 0; i<=15; i++) {
         CAM_DBG(CAM_OIS, "[Update_Gyro_offset_gain_cal_from_flash] after update :buf[%d] = 0x%x", i , buf[i]);
     }
+*/
 
-    //SHT3x_full_init(FLASH_SLVADR);
     en_gyrogain_update = I2C_FM_16bit__read(FLASH_ADDR_GYRO_CALIB + 3); //3D83 check flag data
-    //SHT3x_full_init(SLV_OIS_24720);
-    //en_gyrogain_update = en_gyrogain_update&0x01;//judge bit[0] of 3D83
     CAM_DBG(CAM_OIS, "[Update_Gyro_offset_gain_cal_from_flash] en_gyrogain_update = 0x%x", en_gyrogain_update);
     //*** Notice the Start address of Gyro Calibration data on FLASH ***//
     I2C_OIS_16bit_write(0xF1E2, FLASH_ADDR_GYRO_CALIB);
@@ -622,7 +621,7 @@ void Update_Gyro_offset_gain_cal_from_flash(void)
         I2C_OIS_8bit_write(0xF1E4, 0);
     }
 }
-#define ACCURACY 0x17  //?¨¤8um accuracy
+#define ACCURACY 0x17  //?ï¿½ï¿½8um accuracy
 void Circle_test(void)
 {
 
@@ -833,7 +832,7 @@ void Boot_err_sla_change (void)
 }
 
 
-int Rohm_bu24721_fw_download(bool isTeleOisUseMonitor)
+int Rohm_bu24721_fw_download()
 {
     OIS_ULONG	Prog_ID;
     int ret = 0;
@@ -862,9 +861,9 @@ int Rohm_bu24721_fw_download(bool isTeleOisUseMonitor)
         OIS_soft_reset(Prog_ID);
 
         ret = I2C_OIS_32bit__read(FW_ID, &Prog_ID);//check 0xF01C program ID
-        CAM_ERR(CAM_OIS, "After DL Prog_ID = %08x FW ID:%8x",Prog_ID,BU24721_FW_VERSION);
+        CAM_INFO(CAM_OIS, "After DL Prog_ID = %08x FW ID:%8x",Prog_ID,BU24721_FW_VERSION);
         if(BU24721_FW_VERSION == Prog_ID) {
-            CAM_ERR(CAM_OIS, "Tele DL sucessful");
+            CAM_INFO(CAM_OIS, "Tele DL sucessful");
             ret = 0;
         } else {
             CAM_ERR(CAM_OIS, "Tele DL Failed");
@@ -878,13 +877,31 @@ int Rohm_bu24721_fw_download(bool isTeleOisUseMonitor)
 
     I2C_OIS_8bit_write(0xf020, 0x01);
     F024_Polling();
-    Update_Gyro_offset_gain_cal_from_flash();
-
-    Gyro_select(Q_ICM42631, isTeleOisUseMonitor);
 
     return ret;
 }
 
+int bu24721_do_push_center()
+{
+    int rc = 0;
+
+    rc = I2C_OIS_8bit_write(OIS_control, 0x01);
+    CAM_INFO(CAM_OIS, "I2C_OIS_8bit_write OIS_control(%x), rc  = %d", OIS_control, rc);
+    if (0 == rc)
+    {
+        Wait(100);
+        rc = I2C_OIS_8bit_write(OIS_status, 0x01);
+        CAM_INFO(CAM_OIS, "I2C_OIS_8bit_write OIS_status(%x), rc  = %d", OIS_status, rc);
+    }
+
+    if (0 == rc)
+    {
+        Wait(70000);
+        F024_Polling();
+    }
+
+    return rc;
+}
 
 
 

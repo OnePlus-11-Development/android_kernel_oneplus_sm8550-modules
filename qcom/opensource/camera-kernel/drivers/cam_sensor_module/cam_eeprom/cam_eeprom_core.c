@@ -203,7 +203,11 @@ static int cam_eeprom_power_up(struct cam_eeprom_ctrl_t *e_ctrl,
 	if (e_ctrl->io_master_info.master_type == I3C_MASTER)
 		i3c_probe_completion = cam_eeprom_get_i3c_completion(e_ctrl->soc_info.index);
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	rc = cam_sensor_core_power_up(power_info, soc_info, i3c_probe_completion, &(e_ctrl->io_master_info));
+#else
 	rc = cam_sensor_core_power_up(power_info, soc_info, i3c_probe_completion);
+#endif
 	if (rc) {
 		CAM_ERR(CAM_EEPROM, "failed in eeprom power up rc %d", rc);
 		return rc;
@@ -229,7 +233,11 @@ static int cam_eeprom_power_up(struct cam_eeprom_ctrl_t *e_ctrl,
 
 	return rc;
 cci_failure:
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (cam_sensor_util_power_down(power_info, soc_info, &(e_ctrl->io_master_info)))
+#else
 	if (cam_sensor_util_power_down(power_info, soc_info))
+#endif
 		CAM_ERR(CAM_EEPROM, "Power down failure");
 
 	return rc;
@@ -262,7 +270,11 @@ static int cam_eeprom_power_down(struct cam_eeprom_ctrl_t *e_ctrl)
 		CAM_ERR(CAM_EEPROM, "failed: power_info %pK", power_info);
 		return -EINVAL;
 	}
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	rc = cam_sensor_util_power_down(power_info, soc_info, &(e_ctrl->io_master_info));
+#else
 	rc = cam_sensor_util_power_down(power_info, soc_info);
+#endif
 	if (rc) {
 		CAM_ERR(CAM_EEPROM, "power down the core is failed:%d", rc);
 		return rc;

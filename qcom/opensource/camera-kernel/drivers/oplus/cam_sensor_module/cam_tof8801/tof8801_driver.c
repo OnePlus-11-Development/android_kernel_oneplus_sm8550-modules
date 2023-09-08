@@ -127,6 +127,7 @@ static bool is_alread_probe = 0;
 bool g_is_alread_runing = 0;			// tof have start
 bool g_is_download_fw = 0;				// fw have download
 bool dump_tof_registers = FALSE;
+bool stop_tof_data = FALSE;
 
 
 
@@ -144,29 +145,55 @@ static irqreturn_t tof_irq_handler(int irq, void *dev_id);
 static int tof8801_enable_interrupts(struct tof_sensor_chip *chip, char int_en_flags);
 static int tof8801_app0_poll_irq_thread(void *tof_chip);
 static int start_poll_thread(void);
-static int tof_power_down_thread(void *arg);
+//static int tof_power_down_thread(void *arg);
+static int do_tof_power_down(void);
 
-int tof_power_down_thread(void *arg)
+int do_tof_power_down()
 {
 	int rc=0;
 	struct tof_sensor_chip *chip = g_tof_sensor_chip;
 
-	CAM_INFO(CAM_TOF, "stop irq thread start");
-	AMS_MUTEX_OEM_LOCK(&chip->irq_lock);
-	if (chip->poll_period != 0 && chip->irq_thread_status == TOF_IRQ_THREAD_START) {
-		(void)kthread_stop(chip->app0_poll_irq);
+	CAM_INFO(CAM_TOF, "tof_power_down E");
+
+	AMS_MUTEX_OEM_LOCK(&chip->power_lock);
+	if(chip->power_status == TOF_POWER_ON) {
+		gpiod_set_value(chip->pdata->gpiod_enable, 0);
+		msleep(1);
+		rc = tof_power_down();
+		if(rc != 0) {
+			CAM_ERR(CAM_TOF, "power down failed");
+			AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+			return rc;
+		}
+		CAM_INFO(CAM_TOF, "power down success");
+		chip->power_status = TOF_POWER_OFF;
+	} else {
+		CAM_INFO(CAM_TOF, "donot need do power down,power status=%d",chip->power_status);
 	}
-	chip->irq_thread_status = TOF_IRQ_THREAD_STOP;
-	AMS_MUTEX_OEM_UNLOCK(&chip->irq_lock);
-	CAM_INFO(CAM_TOF, "stop irq threadd done");
+	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+	return 0;
+}
+
+/*
+int tof_power_down_thread(void *arg)
+{
+	int rc=0;
+	struct tof_sensor_chip *chip = g_tof_sensor_chip;
+	AMS_MUTEX_LOCK(&chip->state_lock);
+
+	CAM_INFO(CAM_TOF, "stop irq thread start");
 
 	AMS_MUTEX_OEM_LOCK(&chip->power_lock);
 	if(chip->power_status == TOF_POWER_ON && chip->tof_power_down_thread_exit == TOF_POWER_THREAD_START) {
+		gpiod_set_value(chip->pdata->gpiod_enable, 0);
+		msleep(1);
 		rc = tof_power_down();
 		if(rc != 0) {
 			CAM_ERR(CAM_TOF, "power down failed");
 			chip->tof_power_down_thread_exit = TOF_POWER_THREAD_STOP;
+
 			AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+			AMS_MUTEX_UNLOCK(&chip->state_lock);
 			return rc;
 		}
 		CAM_INFO(CAM_TOF, "power down success");
@@ -176,9 +203,10 @@ int tof_power_down_thread(void *arg)
 	}
 	chip->tof_power_down_thread_exit = TOF_POWER_THREAD_STOP;
 	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+	AMS_MUTEX_UNLOCK(&chip->state_lock);
 	return 0;
 }
-
+*/
 struct tof8801_pinctrl_info {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *gpio_state_active;
@@ -342,7 +370,9 @@ static ssize_t chip_enable_store(struct kobject *kobj,
 		}
 		g_is_alread_runing=1;
 		AMS_MUTEX_UNLOCK(&chip->lock);
+		AMS_MUTEX_LOCK(&chip->state_lock);
 		rc = tof_oem_start();
+		AMS_MUTEX_UNLOCK(&chip->state_lock);
 		if(rc != 0) {
 			CAM_INFO(CAM_TOF, "start tof failed");
 		}
@@ -354,7 +384,9 @@ static ssize_t chip_enable_store(struct kobject *kobj,
 		}
 		g_is_alread_runing=0;
 		AMS_MUTEX_UNLOCK(&chip->lock);
+		AMS_MUTEX_LOCK(&chip->state_lock);
 		rc = tof_stop();
+		AMS_MUTEX_UNLOCK(&chip->state_lock);
 		if(rc != 0) {
 			CAM_INFO(CAM_TOF, "stop tof failed");
 		}
@@ -392,6 +424,43 @@ static ssize_t chip_enable_store(struct kobject *kobj,
 		return count;
 	*/
 }
+
+static ssize_t stop_data_show(struct kobject *kobj,
+	struct kobj_attribute * attr,
+	char * buf)
+{
+	struct tof_sensor_chip *chip = g_tof_sensor_chip;
+	CAM_INFO(CAM_TOF, "%s\n", __func__);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", chip->driver_debug);
+}
+
+static ssize_t stop_data_store(struct kobject *kobj,
+	struct kobj_attribute * attr,
+	const char * buf,
+	size_t count)
+{
+	struct tof_sensor_chip *chip = g_tof_sensor_chip;
+	int debug;
+	CAM_INFO(CAM_TOF, "%s\n", __func__);
+	sscanf(buf, "%d", &debug);
+	if (debug == 0) {
+		stop_tof_data = TRUE;
+		AMS_MUTEX_OEM_LOCK(&chip->irq_lock);
+		if (chip->poll_period != 0 && chip->irq_thread_status == TOF_IRQ_THREAD_START) {
+			(void)kthread_stop(chip->app0_poll_irq);
+		}
+		chip->irq_thread_status = TOF_IRQ_THREAD_STOP;
+		AMS_MUTEX_OEM_UNLOCK(&chip->irq_lock);
+		CAM_INFO(CAM_TOF, "stop irq threadd done");
+
+	} else {
+		stop_tof_data = FALSE;
+		start_poll_thread();
+		CAM_INFO(CAM_TOF, "reset stop_tof_data");
+	}
+	return count;
+}
+
 
 static ssize_t driver_debug_show(struct kobject *kobj,
 	struct kobj_attribute * attr,
@@ -1130,7 +1199,7 @@ static ssize_t app0_read_peak_crosstalk_show(struct kobject *kobj, struct kobj_a
 	unsigned int len = 0;
 	struct tof_sensor_chip *chip = g_tof_sensor_chip;
 
-	CAM_ERR(CAM_TOF, "%s\n", __func__);
+	CAM_INFO(CAM_TOF, "%s\n", __func__);
 	AMS_MUTEX_LOCK(&chip->lock);
 	if (chip->info_rec.record.app_id != TOF8801_APP_ID_APP0) {
 		CAM_ERR(CAM_TOF, "%s: Error ToF chip app_id: %#x",
@@ -1139,7 +1208,7 @@ static ssize_t app0_read_peak_crosstalk_show(struct kobject *kobj, struct kobj_a
 		return -EIO;
 	}
 
-	CAM_ERR(CAM_TOF, "xtalk=%d \n", chip->xtalk_peak);
+	CAM_INFO(CAM_TOF, "xtalk=%d \n", chip->xtalk_peak);
 	len = scnprintf(buf, PAGE_SIZE, "%u\n", chip->xtalk_peak);
 
 	AMS_MUTEX_UNLOCK(&chip->lock);
@@ -1537,7 +1606,7 @@ static ssize_t app0_get_fac_calib_show(struct kobject *kobj,
 	}
 	(void)tof8801_app0_capture(chip, 0);
 	AMS_MUTEX_UNLOCK(&chip->lock);
-	CAM_ERR(CAM_TOF, "factory calibration done");
+	CAM_INFO(CAM_TOF, "factory calibration done");
 
 	return len;
 }
@@ -1586,6 +1655,8 @@ static ssize_t app0_get_distance_show(struct kobject *kobj, struct kobj_attribut
 static OPLUS_ATTR(program,0644, program_show, program_store);
 static OPLUS_ATTR(chip_enable,0644, chip_enable_show, chip_enable_store);
 static OPLUS_ATTR(driver_debug,0644, driver_debug_show, driver_debug_store);
+static OPLUS_ATTR(stop_data,0644, stop_data_show, stop_data_store);
+
 /******* READ-ONLY attributes ******/
 static OPLUS_ATTR(program_version,0644, program_version_show,NULL);
 static OPLUS_ATTR(registers,0644, registers_show,NULL);
@@ -1637,6 +1708,7 @@ static struct attribute *tof_common_attrs[] = {
 	&oplus_attr_program.attr,
 	&oplus_attr_chip_enable.attr,
 	&oplus_attr_driver_debug.attr,
+	&oplus_attr_stop_data.attr,
 	&oplus_attr_program_version.attr,
 	&oplus_attr_registers.attr,
 	&oplus_attr_register_write.attr,
@@ -1725,13 +1797,14 @@ int tof_i2c_read(struct i2c_client *client, char reg, char *buf, int len)
 		AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
 		return 0;
 	}
-	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+
 
 	if (is_tof_use_cci_i2c()) {
 		ret = tof_cci_i2c_read(reg, buf, len);
 	} else {
 		ret = i2c_transfer(client->adapter, msgs, 2);
 	}
+	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
 
 	return ret < 0 ? ret : (ret != ARRAY_SIZE(msgs) ? -EIO : 0);
 }
@@ -1753,7 +1826,6 @@ int tof_i2c_write(struct i2c_client *client, char reg, const char *buf, int len)
 	int ret=0;
 	char debug[120];
 	u32 strsize = 0;
-
 	addr_buf = kmalloc(len + 1, GFP_KERNEL);
 	if (!addr_buf)
 		return -ENOMEM;
@@ -1773,7 +1845,6 @@ int tof_i2c_write(struct i2c_client *client, char reg, const char *buf, int len)
 		AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
 		return ret;
 	}
-	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
 
 
 	if (is_tof_use_cci_i2c()) {
@@ -1782,9 +1853,8 @@ int tof_i2c_write(struct i2c_client *client, char reg, const char *buf, int len)
 		ret = i2c_transfer(client->adapter, &msg, 1);
 	}
 
-	if (ret != 1) {
-		CAM_ERR(CAM_TOF, "i2c_transfer failed: %d msg_len: %u", ret, len);
-	}
+	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+
 	if (chip->driver_debug > 1) {
 		strsize = scnprintf(debug, sizeof(debug), "i2c_write: ");
 		for(idx = 0; (ret == 1) && (idx < msg.len); idx++) {
@@ -1933,7 +2003,7 @@ int tof_wait_for_cpu_ready_timeout(struct i2c_client *client, unsigned long usec
 			return 0;
 		}
 	} while ((jiffies - curr) < usecs_to_jiffies(usec));
-	CAM_ERR(CAM_TOF, "Error timeout (%lu usec) waiting on cpu_ready: %d\n", usec, error);
+		CAM_ERR(CAM_TOF, "Error timeout (%lu usec) waiting on cpu_ready: %d\n", usec, error);
 	return -EIO;
 }
 
@@ -2072,12 +2142,12 @@ static int tof_switch_from_bootloader(struct tof_sensor_chip * chip, char req_ap
 	char *new_app_id;
 
 	// Try to perform RAM download (if possible)
-	CAM_ERR(CAM_TOF, "start to tof8801_firmware_download	\n");
+	CAM_INFO(CAM_TOF, "start to tof8801_firmware_download	\n");
 	error = tof8801_firmware_download(chip, 0);
 
 	start_poll_thread();
 
-	CAM_ERR(CAM_TOF, "end to tof8801_firmware_download \n");
+	CAM_INFO(CAM_TOF, "end to tof8801_firmware_download \n");
 	if (error != 0) {
 		CAM_ERR(CAM_TOF, "tof_switch_from_bootloader tof_switch_from_bootloader error != 0	\n");
 
@@ -2104,7 +2174,7 @@ static int tof_switch_from_bootloader(struct tof_sensor_chip * chip, char req_ap
 		break;
 	case TOF8801_APP_ID_APP0:
 		/* enable all ToF interrupts on sensor */
-		CAM_ERR(CAM_TOF, "tof_switch_from_bootloader tof8801_enable_interrupts start \n");
+		CAM_INFO(CAM_TOF, "tof_switch_from_bootloader tof8801_enable_interrupts start \n");
 		tof8801_enable_interrupts(chip, IRQ_RESULTS | IRQ_DIAG | IRQ_ERROR);
 		break;
 	case TOF8801_APP_ID_APP1:
@@ -2119,7 +2189,7 @@ static int tof_switch_from_bootloader(struct tof_sensor_chip * chip, char req_ap
 int tof_switch_apps(struct tof_sensor_chip *chip, char req_app_id)
 {
 	int error = 0;
-	CAM_ERR(CAM_TOF, "entery tof_switch_apps ,chip->info_rec.record.app_id is %x",chip->info_rec.record.app_id);
+	CAM_INFO(CAM_TOF, "entery tof_switch_apps ,chip->info_rec.record.app_id is %x",chip->info_rec.record.app_id);
 	if (req_app_id == chip->info_rec.record.app_id) {
 		CAM_ERR(CAM_TOF, "don't switch tof_switch_apps ,return ");
 		return 0;
@@ -2130,17 +2200,17 @@ int tof_switch_apps(struct tof_sensor_chip *chip, char req_app_id)
 		CAM_ERR(CAM_TOF, "without cmd tof_switch_apps ,return ");
 		return -1;
 	}
-	CAM_ERR(CAM_TOF, "chip->info_rec.record.app_id is %x",chip->info_rec.record.app_id);
+	CAM_INFO(CAM_TOF, "chip->info_rec.record.app_id is %x",chip->info_rec.record.app_id);
 	switch (chip->info_rec.record.app_id) {
 	case TOF8801_APP_ID_BOOTLOADER:
-		CAM_ERR(CAM_TOF, "tof_switch_from_bootloader start -----");
+		CAM_INFO(CAM_TOF, "tof_switch_from_bootloader start -----");
 		error = tof_switch_from_bootloader(chip, req_app_id);
 		if (error) {
 			/* Hard reset back to bootloader if error */
 			gpiod_set_value(chip->pdata->gpiod_enable, 0);
 			g_is_download_fw = 0;
 			gpiod_set_value(chip->pdata->gpiod_enable, 1);
-			CAM_ERR(CAM_TOF, "tof_wait_for_cpu_startup start -----");
+			CAM_INFO(CAM_TOF, "tof_wait_for_cpu_startup start -----");
 			error = tof_wait_for_cpu_startup(chip->client);
 			if (error) {
 				CAM_ERR(CAM_TOF, "I2C communication failure: %d\n",
@@ -2156,7 +2226,7 @@ int tof_switch_apps(struct tof_sensor_chip *chip, char req_app_id)
 		}
 		break;
 	case TOF8801_APP_ID_APP0:
-		CAM_ERR(CAM_TOF, "switch	TOF8801_APP_ID_APP0 start -----");
+		CAM_INFO(CAM_TOF, "switch	TOF8801_APP_ID_APP0 start -----");
 		error = tof8801_app0_switch_to_bootloader(chip);
 		break;
 	case TOF8801_APP_ID_APP1:
@@ -2213,27 +2283,31 @@ int tof_hard_reset(struct tof_sensor_chip *chip)
 
 	/* enable all ToF interrupts on sensor */
 	tof8801_enable_interrupts(tof_chip, IRQ_RESULTS | IRQ_DIAG | IRQ_ERROR);
-	error = start_poll_thread();
-	if (error) {
-		CAM_ERR(CAM_TOF, "start_poll_thread failed.\n");
-		return error;
-	}
 
 	AMS_MUTEX_LOCK(&tof_chip->lock);
 	if(!g_is_download_fw) {
 		/***** Make firmware download available to user space *****/
 		error = tof8801_firmware_download(tof_chip, 0);
 		if (error) {
+			AMS_MUTEX_UNLOCK(&tof_chip->lock);
 			CAM_ERR(CAM_TOF, "fail to tof8801_firmware_download,rc = %d", error);
+			return error;
 		}
 	} else {
-		CAM_ERR(CAM_TOF, "ams-tof fw have download");
+		CAM_INFO(CAM_TOF, "ams-tof fw have download");
 	}
 	tof8801_enable_interrupts(tof_chip, IRQ_RESULTS | IRQ_DIAG | IRQ_ERROR);
 
 	tof8801_enable_pinctrl(&(client->dev));
 
 	AMS_MUTEX_UNLOCK(&tof_chip->lock);
+
+	error = start_poll_thread();
+	if (error) {
+		CAM_ERR(CAM_TOF, "start_poll_thread failed.\n");
+		return error;
+	}
+
 #endif
 
 	return error;
@@ -2396,6 +2470,7 @@ static irqreturn_t tof_irq_handler(int irq, void *dev_id)
 	char int_stat = 0,DATA1=0,DATA2=0;
 	char appid;
 	int error;
+	int ret = 0;
 	AMS_MUTEX_LOCK(&tof_chip->lock);
 	//Go to appropriate IRQ handler depending on the app running
 	appid = tof_chip->info_rec.record.app_id;
@@ -2403,7 +2478,14 @@ static irqreturn_t tof_irq_handler(int irq, void *dev_id)
 	case TOF8801_APP_ID_BOOTLOADER:
 		goto irq_handled;
 	case TOF8801_APP_ID_APP0:
-		(void)tof8801_get_register(tof_chip->client, TOF8801_INT_STAT, &int_stat);
+		ret = tof8801_get_register(tof_chip->client, TOF8801_INT_STAT, &int_stat);
+
+		if(ret == -EINVAL)
+		{
+			AMS_MUTEX_UNLOCK(&tof_chip->lock);
+			return ret;
+		}
+
 		if (tof_chip->driver_debug) {
 			(void)tof8801_get_register(tof_chip->client, TOF8801_TEST_REG1, &DATA1);
 			(void)tof8801_get_register(tof_chip->client, TOF8801_TEST_REG2, &DATA2);
@@ -2435,6 +2517,7 @@ int tof8801_app0_poll_irq_thread(void *tof_chip)
 	struct tof_sensor_chip *chip = (struct tof_sensor_chip *)tof_chip;
 	char meas_cmd = 0;
 	int us_sleep = 0;
+	int rc = 0;
 //	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
 
 //	sched_setscheduler(chip->app0_poll_irq, SCHED_FIFO, &param);
@@ -2442,15 +2525,30 @@ int tof8801_app0_poll_irq_thread(void *tof_chip)
 	// Poll period is interpreted in units of 100 usec
 //	us_sleep = chip->poll_period * 100;
 	us_sleep = chip->poll_period * 6600;
-	CAM_DBG(CAM_TOF, "Starting ToF irq polling thread, period: %u us\n", us_sleep);
+	CAM_INFO(CAM_TOF, "Starting ToF irq polling thread, period: %u us\n", us_sleep);
 	AMS_MUTEX_UNLOCK(&chip->lock);
 	while (!kthread_should_stop()) {
 		AMS_MUTEX_LOCK(&chip->lock);
 		meas_cmd = chip->app0_app.cap_settings.cmd;
 		AMS_MUTEX_UNLOCK(&chip->lock);
-		if (meas_cmd) {
-			(void) tof_irq_handler(0, tof_chip);
+		if (meas_cmd && rc != -EINVAL) {
+			rc = tof_irq_handler(0, tof_chip);
 		}
+		if(meas_cmd && rc == -EINVAL){
+			CAM_INFO(CAM_TOF, "tof iic error but umd thread not exit \n");
+			input_event(chip->obj_input_dev, EV_ABS, ABS_DISTANCE,0);
+			input_sync(chip->obj_input_dev);
+			input_event(chip->obj_input_dev, EV_ABS, ABS_DISTANCE,1);
+			input_sync(chip->obj_input_dev);
+		}
+		if(meas_cmd == 0 && stop_tof_data == FALSE){
+			CAM_INFO(CAM_TOF, "tof stop but umd thread not exit \n");
+			input_event(chip->obj_input_dev, EV_ABS, ABS_DISTANCE,0);
+			input_sync(chip->obj_input_dev);
+			input_event(chip->obj_input_dev, EV_ABS, ABS_DISTANCE,1);
+			input_sync(chip->obj_input_dev);
+		}
+
 		usleep_range(us_sleep, us_sleep + us_sleep/10);
 	}
 	CAM_INFO(CAM_TOF, "End app0_poll_irq_thread thread \n", us_sleep);
@@ -2534,6 +2632,7 @@ static int tof8801_get_config_calib_data(struct tof_sensor_chip *chip)
 	if (config_fw->size > sizeof(chip->config_data.cfg_data)) {
 		CAM_ERR(CAM_TOF, "Error: config calibration data size too large %ld > %lu (MAX)\n",
 				config_fw->size, sizeof(chip->config_data.cfg_data));
+		release_firmware(config_fw);
 		return 1;
 	}
 	memcpy((void *)&chip->config_data.cfg_data,
@@ -2615,6 +2714,7 @@ int start_poll_thread()
 	struct tof_sensor_chip *chip = g_tof_sensor_chip;
 	int error = 0;
 	AMS_MUTEX_LOCK(&chip->irq_lock);
+	CAM_INFO(CAM_TOF, "start_poll_thread!");
 	if (chip->irq_thread_status == TOF_IRQ_THREAD_STOP) {
 		/*** Use Polled I/O instead of interrupt ***/
 		chip->app0_poll_irq = kthread_run(tof8801_app0_poll_irq_thread,(void *)chip,"tof-irq_poll");
@@ -2626,7 +2726,7 @@ int start_poll_thread()
 			return error;
 		}
 	} else {
-		CAM_ERR(CAM_TOF, "Error starting IRQ polling thread.,thread already exit \n");
+		CAM_INFO(CAM_TOF, "Error starting IRQ polling thread.,thread already exit \n");
 	}
 	chip->irq_thread_status = TOF_IRQ_THREAD_START;
 	AMS_MUTEX_UNLOCK(&chip->irq_lock);
@@ -2637,16 +2737,22 @@ int tof_start_thread(void *tof_chip)
 	struct tof_sensor_chip *chip = g_tof_sensor_chip;
 	int error;
 	int value = 900000;
-
+	int power_result = 0;
 	AMS_MUTEX_OEM_LOCK(&chip->power_lock);
 	if (chip->power_status == TOF_POWER_ON) {
 		AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
 		CAM_INFO(CAM_TOF, "start tof thread init!");
 
 		error = tof_hard_reset(chip);
+
 		if (error) {
+			power_result = do_tof_power_down();
+			if(power_result != 0) {
+				CAM_ERR(CAM_TOF, "power down failed power_result:%d",power_result);
+			}
+
 			CAM_INFO(CAM_TOF, "TOF Hrad reset failed !");
-			AMS_MUTEX_OEM_UNLOCK(&chip->oem_lock);
+			//AMS_MUTEX_OEM_UNLOCK(&chip->oem_lock);
 			return error;
 		}
 		AMS_MUTEX_LOCK(&chip->lock);
@@ -2658,7 +2764,7 @@ int tof_start_thread(void *tof_chip)
 		// chip takes iterations in 1000s
 		value /= 1000;
 		*((__le16 *)chip->app0_app.cap_settings.iterations) = cpu_to_le16(value);
-		error = tof8801_app0_capture((void *)chip, 1);
+		//error = tof8801_app0_capture((void *)chip, 1);
 		AMS_MUTEX_UNLOCK(&chip->lock);
 
 		CAM_INFO(CAM_TOF, "end tof thread init done !	error = %d	",error);
@@ -2682,23 +2788,19 @@ int tof_oem_start()
 	int error=0;
 
 	if (is_alread_probe == 1) {
-		state = gpiod_get_value(chip->pdata->gpiod_enable) ? 1 : 0;
-		if(state == 0) {
-			gpiod_set_value(chip->pdata->gpiod_enable, 1);
-			msleep(10);
-			CAM_INFO(CAM_TOF, "need set gpio enable again.\n");
-		} else {
-			CAM_INFO(CAM_TOF, "gpio enable state=%d.\n",state);
-		}
-		/*gpiod_set_value(chip->pdata->gpiod_enable, 0);
-		msleep(10);
-		gpiod_set_value(chip->pdata->gpiod_enable, 1);
-		msleep(10);*/
-
 		AMS_MUTEX_OEM_LOCK(&chip->power_lock);
 		chip->tof_power_down_thread_exit = TOF_POWER_THREAD_STOP;
+
+		state = gpiod_get_value(chip->pdata->gpiod_enable) ? 1 : 0;
+		if(state == 1) {
+			gpiod_set_value(chip->pdata->gpiod_enable, 0);
+			msleep(10);
+		}
 		if(chip->power_status == TOF_POWER_OFF) {
 			error=tof_power_up();
+			gpiod_set_value(chip->pdata->gpiod_enable, 1);
+			msleep(10);
+
 			if(error != 0) {
 				CAM_ERR(CAM_TOF, "power up failed.\n");
 				AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
@@ -2738,6 +2840,31 @@ int tof_oem_start()
 	return 0;
 }
 
+int tof_reset()
+{
+	struct tof_sensor_chip *chip;
+
+	if (!g_tof_sensor_chip) {
+		CAM_ERR(CAM_TOF, "g_tof_sensor_chip is NULL");
+		return -EINVAL;
+	}
+
+	chip = g_tof_sensor_chip;
+
+	if (is_alread_probe == 1) {
+		stop_tof_data = TRUE;
+		AMS_MUTEX_OEM_LOCK(&chip->irq_lock);
+		if (chip->poll_period != 0 && chip->irq_thread_status == TOF_IRQ_THREAD_START) {
+			(void)kthread_stop(chip->app0_poll_irq);
+		}
+		chip->irq_thread_status = TOF_IRQ_THREAD_STOP;
+		AMS_MUTEX_OEM_UNLOCK(&chip->irq_lock);
+		CAM_ERR(CAM_TOF, "umd crash stop irq threadd.");
+	}
+
+	return 0;
+
+}
 
 int	tof_stop()
 {
@@ -2755,8 +2882,11 @@ int	tof_stop()
 		tof8801_app0_capture(chip, 0);
 		CAM_INFO(CAM_TOF, "tof stop capture ");
 		AMS_MUTEX_OEM_UNLOCK(&chip->oem_lock);
+		g_is_alread_runing = 0;
 	}
 
+	do_tof_power_down();
+/*
 	AMS_MUTEX_OEM_LOCK(&chip->power_lock);
 	if(chip->power_status == TOF_POWER_ON && chip->tof_power_down_thread_exit == TOF_POWER_THREAD_STOP) {
 		chip->tof_power_down_thread_exit = TOF_POWER_THREAD_START;
@@ -2766,7 +2896,7 @@ int	tof_stop()
 		CAM_INFO(CAM_TOF, "donot need do power down,power status=%d,thread_exit=%d",chip->power_status,chip->tof_power_down_thread_exit);
 	}
 	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
-
+*/
 	return 0;
 }
 
@@ -2782,6 +2912,12 @@ int wait_for_tof_ready()
 	AMS_MUTEX_OEM_LOCK(&tof_chip->power_lock);
 	tof_chip->tof_power_down_thread_exit = TOF_POWER_THREAD_STOP;
 	if(tof_chip->power_status == TOF_POWER_OFF) {
+
+		if (g_tof_sensor_chip != NULL) {
+			gpiod_set_value(g_tof_sensor_chip->pdata->gpiod_enable, 0);
+			msleep(5);
+		}
+
 		error=tof_power_up();
 		if(error != 0) {
 			CAM_ERR(CAM_TOF, "power up failed.\n");
@@ -2865,6 +3001,8 @@ int wait_for_tof_ready()
 		CAM_INFO(CAM_TOF, "No probe tof8801 i2c device or have probe done ,check it\n");
 	}
 
+	do_tof_power_down();
+/*
 	AMS_MUTEX_OEM_LOCK(&tof_chip->power_lock);
 	if(tof_chip->power_status == TOF_POWER_ON && tof_chip->tof_power_down_thread_exit == TOF_POWER_THREAD_STOP) {
 		tof_chip->tof_power_down_thread_exit = TOF_POWER_THREAD_START;
@@ -2874,11 +3012,13 @@ int wait_for_tof_ready()
 		CAM_INFO(CAM_TOF, "tof have power down");
 	}
 	AMS_MUTEX_OEM_UNLOCK(&tof_chip->power_lock);
-
+*/
 
 	return 0;
 
 gen_err:
+	do_tof_power_down();
+/*
 	AMS_MUTEX_OEM_LOCK(&tof_chip->power_lock);
 	if(tof_chip->power_status == TOF_POWER_ON && tof_chip->tof_power_down_thread_exit == TOF_POWER_THREAD_STOP){
 			tof_chip->tof_power_down_thread_exit = TOF_POWER_THREAD_START;
@@ -2888,7 +3028,7 @@ gen_err:
 			CAM_INFO(CAM_TOF, "tof have power down");
 	}
 	AMS_MUTEX_OEM_UNLOCK(&tof_chip->power_lock);
-
+*/
 	return error;
 }
 
@@ -2915,6 +3055,7 @@ static int tof_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 
 	/***** Setup data structures *****/
 	mutex_init(&tof_chip->lock);
+	mutex_init(&tof_chip->state_lock);
 	mutex_init(&tof_chip->oem_lock);
 	mutex_init(&tof_chip->power_lock);
 	mutex_init(&tof_chip->irq_lock);
@@ -3031,6 +3172,10 @@ static int tof_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 	tof8801_enable_interrupts(tof_chip, IRQ_RESULTS | IRQ_DIAG | IRQ_ERROR);
 	CAM_INFO(CAM_TOF, "Probe ok.\n");
 
+	if (tof_chip->pdata->gpiod_enable) {
+		(void) gpiod_direction_output(tof_chip->pdata->gpiod_enable, 0);
+	}
+
 	return 0;
 
 	/***** Failure case(s), unwind and return error *****/
@@ -3107,7 +3252,8 @@ static int tof_remove(struct i2c_client *client)
 		devm_free_irq(&client->dev, client->irq, chip);
 		devm_gpiod_put(&client->dev, chip->pdata->gpiod_interrupt);
 	}
-
+	do_tof_power_down();
+/*
 	AMS_MUTEX_OEM_LOCK(&chip->power_lock);
 	if(chip->power_status == TOF_POWER_ON && chip->tof_power_down_thread_exit == TOF_POWER_THREAD_STOP) {
 		chip->tof_power_down_thread_exit = TOF_POWER_THREAD_START;
@@ -3117,6 +3263,7 @@ static int tof_remove(struct i2c_client *client)
 		CAM_INFO(CAM_TOF, "tof have power down");
 	}
 	AMS_MUTEX_OEM_UNLOCK(&chip->power_lock);
+*/
 
 	if (chip->pdata->gpiod_enable) {
 		/* disable the chip */

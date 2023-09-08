@@ -77,6 +77,22 @@ int32_t camera_io_init(struct camera_io_master *io_master_info);
  */
 int32_t camera_io_release(struct camera_io_master *io_master_info);
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+ /**
+  * @io_master_info: I2C/SPI master information
+ *
+ * This API abstracts lock functionality based on master type
+ */
+int32_t camera_io_dev_lock(struct camera_io_master *io_master_info);
+
+/**
+ * @io_master_info: I2C/SPI master information
+ *
+ * This API abstracts unlock functionality based on master type
+ */
+int32_t camera_io_dev_unlock(struct camera_io_master *io_master_info);
+#endif
+
 /**
  * @io_master_info: I2C/SPI master information
  * @write_setting: write settings information

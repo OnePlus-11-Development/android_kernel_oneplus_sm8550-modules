@@ -60,6 +60,7 @@ void cam_set_ois_disable(struct cam_ois_ctrl_t *o_ctrl);
 int RohmOisWrite(struct cam_ois_ctrl_t *o_ctrl, uint32_t addr, uint32_t data);
 int RohmOisRead(struct cam_ois_ctrl_t *o_ctrl, uint32_t addr, uint32_t* data);
 int Rohm_ois_fw_download(struct cam_ois_ctrl_t *o_ctrl);
+void spi_mode_switch(struct cam_ois_ctrl_t *o_ctrl);
 
 uint8_t I2C_FW_8bit__read(uint32_t addr);
 uint32_t I2C_FM_32bit__read(uint32_t addr);
@@ -78,13 +79,14 @@ int I2C_OIS_32bit__read(uint32_t addr, uint32_t* data);
 
 int I2C_OIS_8bit_write(uint32_t addr, uint8_t data);
 int I2C_OIS_16bit_write(uint32_t addr, uint16_t data);
+int I2C_OIS_32bit_write(uint32_t addr, uint32_t data);
+
 void I2C_OIS_block_write(void* register_data,int size);
 
 
-
-
 void Wait(int us);
-
+int oplus_cam_ois_do_push_center(struct cam_ois_ctrl_t *o_ctrl);
+int oplus_cam_ois_push_center(struct cam_ois_ctrl_t *o_ctrl, void *arg);
 
 
 

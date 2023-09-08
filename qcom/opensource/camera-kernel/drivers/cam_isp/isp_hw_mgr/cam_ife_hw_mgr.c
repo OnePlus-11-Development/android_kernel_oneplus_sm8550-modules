@@ -14303,7 +14303,11 @@ static ssize_t cam_ife_hw_mgr_perfcnt_write(
 	if (size >= 16)
 		return -EINVAL;
 
+#ifdef OPLUS_FEATURE_CAMERA_COMMON
+	if (copy_from_user(input_buf, ubuf, size))
+#else
 	if (copy_from_user(input_buf, ubuf, sizeof(input_buf)))
+#endif
 		return -EFAULT;
 
 	if ((!g_ife_hw_mgr.isp_caps.num_ife_perf_counters) &&

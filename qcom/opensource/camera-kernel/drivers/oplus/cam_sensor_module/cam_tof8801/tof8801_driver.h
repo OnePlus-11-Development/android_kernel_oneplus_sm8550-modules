@@ -101,6 +101,7 @@ union tof8801_info_record {
 
 struct tof_sensor_chip {
 	struct mutex lock;
+	struct mutex state_lock;
 	int poll_period;
 	int driver_debug;
 	int saved_clk_trim;
@@ -150,6 +151,7 @@ extern int tof_wait_for_cpu_ready_timeout(struct i2c_client *client, unsigned lo
 extern void tof_dump_i2c_regs(struct tof_sensor_chip * chip, char offset, char end);
 extern int wait_for_tof_ready(void);
 extern int tof_stop(void);
+extern int tof_reset(void);
 extern int tof_oem_start(void);
 
 extern struct i2c_driver tof_driver;

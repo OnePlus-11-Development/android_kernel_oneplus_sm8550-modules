@@ -13,6 +13,7 @@
 #include "cam_compat.h"
 #ifdef OPLUS_FEATURE_CAMERA_COMMON
 #include "fw_download_interface.h"
+#define VIDIOC_CAM_OIS_PUSHCENTER 0x9020
 #endif
 
 static struct cam_i3c_ois_data {
@@ -82,6 +83,12 @@ static long cam_ois_subdev_ioctl(struct v4l2_subdev *sd,
 		break;
 	case VIDIOC_CAM_SENSOR_STOP:
 		cam_ois_do_power_down(o_ctrl);
+		break;
+	case VIDIOC_CAM_OIS_PUSHCENTER:
+		rc = oplus_cam_ois_push_center(o_ctrl, arg);
+		if (rc)
+			CAM_ERR(CAM_OIS,
+				"Failed with ois push center: %d", rc);
 		break;
 #endif
 	default:
