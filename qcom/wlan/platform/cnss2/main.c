@@ -77,6 +77,7 @@
 #define CNSS_CAL_DB_FILE_NAME "wlfw_cal_db.bin"
 #define CNSS_CAL_START_PROBE_WAIT_RETRY_MAX 100
 #define CNSS_CAL_START_PROBE_WAIT_MS	500
+#define CNSS_TIME_SYNC_PERIOD_INVALID	0xFFFFFFFF
 
 enum cnss_cal_db_op {
 	CNSS_CAL_DB_UPLOAD,
@@ -466,6 +467,35 @@ int cnss_get_feature_list(struct cnss_plat_data *plat_priv,
 	return 0;
 }
 
+size_t cnss_get_platform_name(struct cnss_plat_data *plat_priv,
+			      char *buf, const size_t buf_len)
+{
+	if (unlikely(!plat_priv || !buf || !buf_len))
+		return 0;
+
+	if (of_property_read_bool(plat_priv->plat_dev->dev.of_node,
+				  "platform-name-required")) {
+		struct device_node *root;
+
+		root = of_find_node_by_path("/");
+		if (root) {
+			const char *model;
+			size_t model_len;
+
+			model = of_get_property(root, "model", NULL);
+			if (model) {
+				model_len = strlcpy(buf, model, buf_len);
+				cnss_pr_dbg("Platform name: %s (%zu)\n",
+					    buf, model_len);
+
+				return model_len;
+			}
+		}
+	}
+
+	return 0;
+}
+
 void cnss_pm_stay_awake(struct cnss_plat_data *plat_priv)
 {
 	if (atomic_inc_return(&plat_priv->pm_count) != 1)
@@ -811,6 +841,23 @@ int cnss_set_pcie_gen_speed(struct device *dev, u8 pcie_gen_speed)
 }
 EXPORT_SYMBOL(cnss_set_pcie_gen_speed);
 
+static bool cnss_is_aux_support_enabled(struct cnss_plat_data *plat_priv)
+{
+	switch (plat_priv->device_id) {
+	case PEACH_DEVICE_ID:
+		if (!plat_priv->fw_aux_uc_support) {
+			cnss_pr_dbg("FW does not support aux uc capability\n");
+			return false;
+		}
+		break;
+	default:
+		cnss_pr_dbg("Host does not support aux uc capability\n");
+		return false;
+	}
+
+	return true;
+}
+
 static int cnss_fw_mem_ready_hdlr(struct cnss_plat_data *plat_priv)
 {
 	int ret = 0;
@@ -823,6 +870,11 @@ static int cnss_fw_mem_ready_hdlr(struct cnss_plat_data *plat_priv)
 	ret = cnss_wlfw_tgt_cap_send_sync(plat_priv);
 	if (ret)
 		goto out;
+
+	cnss_bus_load_tme_patch(plat_priv);
+
+	cnss_wlfw_tme_patch_dnld_send_sync(plat_priv,
+					   WLFW_TME_LITE_PATCH_FILE_V01);
 
 	if (plat_priv->hds_enabled)
 		cnss_wlfw_bdf_dnld_send_sync(plat_priv, CNSS_BDF_HDS);
@@ -849,6 +901,16 @@ static int cnss_fw_mem_ready_hdlr(struct cnss_plat_data *plat_priv)
 	ret = cnss_wlfw_m3_dnld_send_sync(plat_priv);
 	if (ret)
 		goto out;
+
+	if (cnss_is_aux_support_enabled(plat_priv)) {
+		ret = cnss_bus_load_aux(plat_priv);
+		if (ret)
+			goto out;
+
+		ret = cnss_wlfw_aux_dnld_send_sync(plat_priv);
+		if (ret)
+			goto out;
+	}
 
 	cnss_wlfw_qdss_dnld_send_sync(plat_priv);
 
@@ -1884,18 +1946,29 @@ static void cnss_recovery_work_handler(struct work_struct *work)
 {
 }
 #else
-static void cnss_recovery_work_handler(struct work_struct *work)
+void cnss_recovery_handler(struct cnss_plat_data *plat_priv)
 {
 	int ret;
 
-	struct cnss_plat_data *plat_priv =
-		container_of(work, struct cnss_plat_data, recovery_work);
+	set_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
 
 	if (!plat_priv->recovery_enabled)
 		panic("subsys-restart: Resetting the SoC wlan crashed\n");
 
 	cnss_bus_dev_shutdown(plat_priv);
 	cnss_bus_dev_ramdump(plat_priv);
+
+	/* If recovery is triggered before Host driver registration,
+	 * avoid device power up because eventually device will be
+	 * power up as part of driver registration.
+	 */
+	if (!test_bit(CNSS_DRIVER_REGISTER, &plat_priv->driver_state) ||
+	    !test_bit(CNSS_DRIVER_REGISTERED, &plat_priv->driver_state)) {
+		cnss_pr_dbg("Host driver not registered yet, ignore Device Power Up, 0x%lx\n",
+			    plat_priv->driver_state);
+		return;
+	}
+
 	msleep(POWER_RESET_MIN_DELAY_MS);
 
 	ret = cnss_bus_dev_powerup(plat_priv);
@@ -1903,6 +1976,14 @@ static void cnss_recovery_work_handler(struct work_struct *work)
 		__pm_relax(plat_priv->recovery_ws);
 
 	return;
+}
+
+static void cnss_recovery_work_handler(struct work_struct *work)
+{
+	struct cnss_plat_data *plat_priv =
+		container_of(work, struct cnss_plat_data, recovery_work);
+
+	cnss_recovery_handler(plat_priv);
 }
 
 void cnss_device_crashed(struct device *dev)
@@ -2011,6 +2092,18 @@ self_recovery:
 	if (test_bit(LINK_DOWN_SELF_RECOVERY, &plat_priv->ctrl_params.quirks))
 		clear_bit(LINK_DOWN_SELF_RECOVERY,
 			  &plat_priv->ctrl_params.quirks);
+
+	/* If link down self recovery is triggered before Host driver
+	 * registration, avoid device power up because eventually device
+	 * will be power up as part of driver registration.
+	 */
+
+	if (!test_bit(CNSS_DRIVER_REGISTER, &plat_priv->driver_state) ||
+	    !test_bit(CNSS_DRIVER_REGISTERED, &plat_priv->driver_state)) {
+		cnss_pr_dbg("Host driver not registered yet, ignore Device Power Up, 0x%lx\n",
+			    plat_priv->driver_state);
+		return 0;
+	}
 
 	cnss_bus_dev_powerup(plat_priv);
 
@@ -3150,9 +3243,14 @@ int cnss_do_host_ramdump(struct cnss_plat_data *plat_priv,
 		[CNSS_HOST_WMI_COMMAND_LOG_IDX] = "wmi_command_log_idx",
 		[CNSS_HOST_WMI_EVENT_LOG_IDX] = "wmi_event_log_idx",
 		[CNSS_HOST_WMI_RX_EVENT_IDX] = "wmi_rx_event_idx",
-		[CNSS_HOST_HIF_CE_DESC_HISTORY] = "hif_ce_desc_history",
 		[CNSS_HOST_HIF_CE_DESC_HISTORY_BUFF] = "hif_ce_desc_history_buff",
-		[CNSS_HOST_HANG_EVENT_DATA] = "hang_event_data"
+		[CNSS_HOST_HANG_EVENT_DATA] = "hang_event_data",
+		[CNSS_HOST_CE_DESC_HIST] = "hif_ce_desc_hist",
+		[CNSS_HOST_CE_COUNT_MAX] = "hif_ce_count_max",
+		[CNSS_HOST_CE_HISTORY_MAX] = "hif_ce_history_max",
+		[CNSS_HOST_ONLY_FOR_CRIT_CE] = "hif_ce_only_for_crit",
+		[CNSS_HOST_HIF_EVENT_HISTORY] = "hif_event_history",
+		[CNSS_HOST_HIF_EVENT_HIST_MAX] = "hif_event_hist_max"
 	};
 	int i;
 	int ret = 0;
@@ -3600,8 +3698,8 @@ int cnss_minidump_remove_region(struct cnss_plat_data *plat_priv,
 	md_entry.size = size;
 	md_entry.id = MSM_DUMP_DATA_CNSS_WLAN;
 
-	cnss_pr_dbg("Remove mini dump region: %s, va: %pK, pa: %pa, size: 0x%zx\n",
-		    md_entry.name, va, &pa, size);
+	cnss_pr_vdbg("Remove mini dump region: %s, va: %pK, pa: %pa, size: 0x%zx\n",
+		     md_entry.name, va, &pa, size);
 
 	ret = msm_minidump_remove_region(&md_entry);
 	if (ret)
@@ -3873,6 +3971,26 @@ static ssize_t time_sync_period_show(struct device *dev,
 			plat_priv->ctrl_params.time_sync_period);
 }
 
+/**
+ * cnss_get_min_time_sync_period_by_vote() - Get minimum time sync period
+ * @plat_priv: Platform data structure
+ *
+ * Result: return minimum time sync period present in vote from wlan and sys
+ */
+uint32_t cnss_get_min_time_sync_period_by_vote(struct cnss_plat_data *plat_priv)
+{
+	unsigned int i, min_time_sync_period = CNSS_TIME_SYNC_PERIOD_INVALID;
+	unsigned int time_sync_period;
+
+	for (i = 0; i < TIME_SYNC_VOTE_MAX; i++) {
+		time_sync_period = plat_priv->ctrl_params.time_sync_period_vote[i];
+		if (min_time_sync_period > time_sync_period)
+			min_time_sync_period = time_sync_period;
+	}
+
+	return min_time_sync_period;
+}
+
 static ssize_t time_sync_period_store(struct device *dev,
 				      struct device_attribute *attr,
 				      const char *buf, size_t count)
@@ -3888,11 +4006,93 @@ static ssize_t time_sync_period_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	if (time_sync_period >= CNSS_MIN_TIME_SYNC_PERIOD)
-		cnss_bus_update_time_sync_period(plat_priv, time_sync_period);
+	if (time_sync_period < CNSS_MIN_TIME_SYNC_PERIOD) {
+		cnss_pr_err("Invalid time sync value\n");
+		return -EINVAL;
+	}
+	plat_priv->ctrl_params.time_sync_period_vote[TIME_SYNC_VOTE_CNSS] =
+		time_sync_period;
+	time_sync_period = cnss_get_min_time_sync_period_by_vote(plat_priv);
+
+	if (time_sync_period == CNSS_TIME_SYNC_PERIOD_INVALID) {
+		cnss_pr_err("Invalid min time sync value\n");
+		return -EINVAL;
+	}
+
+	cnss_bus_update_time_sync_period(plat_priv, time_sync_period);
 
 	return count;
 }
+
+/**
+ * cnss_update_time_sync_period() - Set time sync period given by driver
+ * @dev: device structure
+ * @time_sync_period: time sync period value
+ *
+ * Update time sync period vote of driver and set minimum of time sync period
+ * from stored vote through wlan and sys config
+ * Result: return 0 for success, error in case of invalid value and no dev
+ */
+int cnss_update_time_sync_period(struct device *dev, uint32_t time_sync_period)
+{
+	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
+
+	if (!plat_priv)
+		return -ENODEV;
+
+	if (time_sync_period < CNSS_MIN_TIME_SYNC_PERIOD) {
+		cnss_pr_err("Invalid time sync value\n");
+		return -EINVAL;
+	}
+
+	plat_priv->ctrl_params.time_sync_period_vote[TIME_SYNC_VOTE_WLAN] =
+		time_sync_period;
+	time_sync_period = cnss_get_min_time_sync_period_by_vote(plat_priv);
+
+	if (time_sync_period == CNSS_TIME_SYNC_PERIOD_INVALID) {
+		cnss_pr_err("Invalid min time sync value\n");
+		return -EINVAL;
+	}
+
+	cnss_bus_update_time_sync_period(plat_priv, time_sync_period);
+	return 0;
+}
+EXPORT_SYMBOL(cnss_update_time_sync_period);
+
+/**
+ * cnss_reset_time_sync_period() - Reset time sync period
+ * @dev: device structure
+ *
+ * Update time sync period vote of driver as invalid
+ * and reset minimum of time sync period from
+ * stored vote through wlan and sys config
+ * Result: return 0 for success, error in case of no dev
+ */
+int cnss_reset_time_sync_period(struct device *dev)
+{
+	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
+	unsigned int time_sync_period = 0;
+
+	if (!plat_priv)
+		return -ENODEV;
+
+	/* Driver vote is set to invalid in case of reset
+	 * In this case, only vote valid to check is sys config
+	 */
+	plat_priv->ctrl_params.time_sync_period_vote[TIME_SYNC_VOTE_WLAN] =
+		CNSS_TIME_SYNC_PERIOD_INVALID;
+	time_sync_period = cnss_get_min_time_sync_period_by_vote(plat_priv);
+
+	if (time_sync_period == CNSS_TIME_SYNC_PERIOD_INVALID) {
+		cnss_pr_err("Invalid min time sync value\n");
+		return -EINVAL;
+	}
+
+	cnss_bus_update_time_sync_period(plat_priv, time_sync_period);
+
+	return 0;
+}
+EXPORT_SYMBOL(cnss_reset_time_sync_period);
 
 static ssize_t recovery_store(struct device *dev,
 			      struct device_attribute *attr,
@@ -3927,14 +4127,15 @@ static ssize_t shutdown_store(struct device *dev,
 {
 	struct cnss_plat_data *plat_priv = dev_get_drvdata(dev);
 
+	cnss_pr_dbg("Received shutdown notification\n");
 	if (plat_priv) {
 		set_bit(CNSS_IN_REBOOT, &plat_priv->driver_state);
+		cnss_bus_update_status(plat_priv, CNSS_SYS_REBOOT);
 		del_timer(&plat_priv->fw_boot_timer);
 		complete_all(&plat_priv->power_up_complete);
 		complete_all(&plat_priv->cal_complete);
+		cnss_pr_dbg("Shutdown notification handled\n");
 	}
-
-	cnss_pr_dbg("Received shutdown notification\n");
 
 	return count;
 }
@@ -4183,6 +4384,7 @@ static int cnss_reboot_notifier(struct notifier_block *nb,
 		container_of(nb, struct cnss_plat_data, reboot_nb);
 
 	set_bit(CNSS_IN_REBOOT, &plat_priv->driver_state);
+	cnss_bus_update_status(plat_priv, CNSS_SYS_REBOOT);
 	del_timer(&plat_priv->fw_boot_timer);
 	complete_all(&plat_priv->power_up_complete);
 	complete_all(&plat_priv->cal_complete);
@@ -4277,6 +4479,24 @@ static void cnss_sram_dump_init(struct cnss_plat_data *plat_priv)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_WCNSS_MEM_PRE_ALLOC)
+static void cnss_initialize_mem_pool(unsigned long device_id)
+{
+	cnss_initialize_prealloc_pool(device_id);
+}
+static void cnss_deinitialize_mem_pool(void)
+{
+	cnss_deinitialize_prealloc_pool();
+}
+#else
+static void cnss_initialize_mem_pool(unsigned long device_id)
+{
+}
+static void cnss_deinitialize_mem_pool(void)
+{
+}
+#endif
+
 static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 {
 	int ret;
@@ -4287,12 +4507,6 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 
 	timer_setup(&plat_priv->fw_boot_timer,
 		    cnss_bus_fw_boot_timeout_hdlr, 0);
-
-	plat_priv->reboot_nb.notifier_call = cnss_reboot_notifier;
-	ret = register_reboot_notifier(&plat_priv->reboot_nb);
-	if (ret)
-		cnss_pr_err("Failed to register reboot notifier, err = %d\n",
-			    ret);
 
 	ret = device_init_wakeup(&plat_priv->plat_dev->dev, true);
 	if (ret)
@@ -4307,6 +4521,13 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 	init_completion(&plat_priv->daemon_connected);
 	mutex_init(&plat_priv->dev_lock);
 	mutex_init(&plat_priv->driver_ops_lock);
+
+	plat_priv->reboot_nb.notifier_call = cnss_reboot_notifier;
+	ret = register_reboot_notifier(&plat_priv->reboot_nb);
+	if (ret)
+		cnss_pr_err("Failed to register reboot notifier, err = %d\n",
+			    ret);
+
 	plat_priv->recovery_ws =
 		wakeup_source_register(&plat_priv->plat_dev->dev,
 				       "CNSS_FW_RECOVERY");
@@ -4325,6 +4546,8 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 	if (of_property_read_bool(plat_priv->plat_dev->dev.of_node,
 				  "qcom,rc-ep-short-channel"))
 		cnss_set_feature_list(plat_priv, CNSS_RC_EP_ULTRASHORT_CHANNEL_V01);
+	if (plat_priv->device_id == PEACH_DEVICE_ID)
+		cnss_set_feature_list(plat_priv, CNSS_AUX_UC_SUPPORT_V01);
 
 	return 0;
 }
@@ -4360,6 +4583,14 @@ static void cnss_misc_deinit(struct cnss_plat_data *plat_priv)
 	kfree(plat_priv->on_chip_pmic_board_ids);
 }
 
+static void cnss_init_time_sync_period_default(struct cnss_plat_data *plat_priv)
+{
+	plat_priv->ctrl_params.time_sync_period_vote[TIME_SYNC_VOTE_WLAN] =
+		CNSS_TIME_SYNC_PERIOD_INVALID;
+	plat_priv->ctrl_params.time_sync_period_vote[TIME_SYNC_VOTE_CNSS] =
+		CNSS_TIME_SYNC_PERIOD_DEFAULT;
+}
+
 static void cnss_init_control_params(struct cnss_plat_data *plat_priv)
 {
 	plat_priv->ctrl_params.quirks = CNSS_QUIRKS_DEFAULT;
@@ -4373,6 +4604,7 @@ static void cnss_init_control_params(struct cnss_plat_data *plat_priv)
 	plat_priv->ctrl_params.qmi_timeout = CNSS_QMI_TIMEOUT_DEFAULT;
 	plat_priv->ctrl_params.bdf_type = CNSS_BDF_TYPE_DEFAULT;
 	plat_priv->ctrl_params.time_sync_period = CNSS_TIME_SYNC_PERIOD_DEFAULT;
+	cnss_init_time_sync_period_default(plat_priv);
 	/* Set adsp_pc_enabled default value to true as ADSP pc is always
 	 * enabled by default
 	 */
@@ -4867,12 +5099,12 @@ static int cnss_probe(struct platform_device *plat_dev)
 		goto reset_plat_dev;
 	}
 
-	cnss_initialize_prealloc_pool(plat_priv->device_id);
+	cnss_initialize_mem_pool(plat_priv->device_id);
 
 	ret = cnss_get_pld_bus_ops_name(plat_priv);
 	if (ret)
-		cnss_pr_err("Failed to find bus ops name, err = %d\n",
-			    ret);
+		cnss_pr_vdbg("Failed to find bus ops name, err = %d\n",
+			     ret);
 
 	ret = cnss_get_rc_num(plat_priv);
 
@@ -4895,7 +5127,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	cnss_power_misc_params_init(plat_priv);
 	cnss_get_tcs_info(plat_priv);
 	cnss_get_cpr_info(plat_priv);
-	cnss_aop_mbox_init(plat_priv);
+	cnss_aop_interface_init(plat_priv);
 	cnss_init_control_params(plat_priv);
 
 	ret = cnss_get_resources(plat_priv);
@@ -4971,8 +5203,9 @@ unreg_esoc:
 free_res:
 	cnss_put_resources(plat_priv);
 reset_ctx:
+	cnss_aop_interface_deinit(plat_priv);
 	platform_set_drvdata(plat_dev, NULL);
-	cnss_deinitialize_prealloc_pool();
+	cnss_deinitialize_mem_pool();
 reset_plat_dev:
 	cnss_clear_plat_priv(plat_priv);
 out:
@@ -4998,12 +5231,8 @@ static int cnss_remove(struct platform_device *plat_dev)
 	cnss_unregister_bus_scale(plat_priv);
 	cnss_unregister_esoc(plat_priv);
 	cnss_put_resources(plat_priv);
-
-	if (!IS_ERR_OR_NULL(plat_priv->mbox_chan))
-		mbox_free_channel(plat_priv->mbox_chan);
-
-	cnss_deinitialize_prealloc_pool();
-
+	cnss_aop_interface_deinit(plat_priv);
+	cnss_deinitialize_mem_pool();
 	platform_set_drvdata(plat_dev, NULL);
 	cnss_clear_plat_priv(plat_priv);
 
