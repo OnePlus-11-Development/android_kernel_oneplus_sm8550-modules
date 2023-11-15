@@ -186,14 +186,11 @@ struct swr_mstr_ctrl {
 	struct clk *lpass_core_hw_vote;
 	struct clk *lpass_core_audio;
 	u8 num_usecase;
-	#ifdef OPLUS_ARCH_EXTENDS
-	/* Modify for fix noise, case 05404028 */
-	u32 pcm_enable_count;
-	#endif /* OPLUS_ARCH_EXTENDS */
 	u32 swr_irq_wakeup_capable;
 	int hw_core_clk_en;
 	int aud_core_clk_en;
 	int clk_src;
+	u32 pcm_enable_count;
 	u32 disable_div2_clk_switch;
 	u32 rd_fifo_depth;
 	u32 wr_fifo_depth;

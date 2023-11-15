@@ -403,7 +403,8 @@ ssize_t audio_pkt_write(struct file *file, const char __user *buf,
 		mutex_unlock(&audpkt_dev->lock);
 		goto free_kbuf;
 	}
-	ret = gpr_send_pkt(ap_priv->adev,(struct gpr_pkt *) kbuf);
+
+	ret = gpr_send_pkt(ap_priv->adev, (struct gpr_pkt *) kbuf);
 	if (ret < 0) {
 		AUDIO_PKT_ERR("APR Send Packet Failed ret -%d\n", ret);
 		if (ret == -ECONNRESET)
@@ -721,7 +722,6 @@ static int audio_pkt_platform_driver_remove(struct platform_device *adev)
 				 MINOR_NUMBER_COUNT);
 	}
 
-	//of_platform_depopulate(&adev->dev);
 	AUDIO_PKT_INFO("Audio Packet Port Driver Removed\n");
 
 	return 0;

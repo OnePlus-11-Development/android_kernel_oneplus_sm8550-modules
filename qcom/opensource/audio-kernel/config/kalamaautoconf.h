@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define CONFIG_SND_SOC_MSM_QDSP6V2_INTF 1
 #define CONFIG_SND_SOC_KALAMA 1
+#define CONFIG_SND_SOC_CROW 1
 #define CONFIG_SND_EVENT 1
 #define CONFIG_AUDIO_PKT_ION 1
 #define CONFIG_MSM_QDSP6_NOTIFIER 1
@@ -35,6 +36,10 @@
 #define CONFIG_SND_SOC_WCD9XXX_V2 1
 #define CONFIG_SND_SOC_WCD938X 1
 #define CONFIG_SND_SOC_WCD938X_SLAVE 1
+#define CONFIG_SND_SOC_WCD937X 1
+#define CONFIG_SND_SOC_WCD937X_SLAVE 1
+#define CONFIG_SND_SOC_WCD939X 1
+#define CONFIG_SND_SOC_WCD939X_SLAVE 1
 #define CONFIG_SND_SOC_WCD_MBHC 1
 #define CONFIG_SND_SOC_WCD_MBHC_ADC 1
 #define CONFIG_SND_SOC_SWR_DMIC 1
