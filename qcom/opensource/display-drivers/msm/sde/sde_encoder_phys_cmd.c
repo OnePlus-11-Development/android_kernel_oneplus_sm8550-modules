@@ -1864,7 +1864,9 @@ static int _sde_encoder_phys_cmd_handle_wr_ptr_timeout(
 		SDE_ERROR_CMDENC(cmd_enc,
 			"wr_ptr_irq wait failed, switch_te:%d\n", switch_te);
 		SDE_EVT32(DRMID(phys_enc->parent), switch_te, SDE_EVTLOG_ERROR);
-
+#ifdef OPLUS_FEATURE_DISPLAY
+		SDE_MM_ERROR("DisplayDriverID@@418$$wr_ptr_irq timeout failed, switch_te=%d\n", switch_te);
+#endif /* OPLUS_FEATURE_DISPLAY */
 		if (sde_encoder_phys_cmd_is_master(phys_enc) &&
 			atomic_add_unless(
 			&phys_enc->pending_retire_fence_cnt, -1, 0)) {

@@ -129,7 +129,7 @@ bool oplus_panel_validate_reg_read(struct dsi_panel *panel)
 	cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "ESD:");
 	for (i = 0; i < len; ++i)
 		cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, " [0x%02X]", config->return_buf[i]);
-
+	DSI_MM_ERR("ESD check failed:%s\n", payload);
 	return false;
 }
 

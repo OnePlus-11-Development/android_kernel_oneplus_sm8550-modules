@@ -3832,6 +3832,8 @@ static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 	SDE_ATRACE_END("encoder_underrun_callback");
 
 #ifdef OPLUS_FEATURE_DISPLAY
+	SDE_MM_ERROR("DisplayDriverID@@422$$sde encoder underrun callback! Count=%d",
+			atomic_read(&phy_enc->underrun_cnt));
 	if (get_eng_version() == AGING) {
 		SDE_DBG_DUMP(SDE_DBG_BUILT_IN_ALL, "panic");
 	}

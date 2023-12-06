@@ -1291,6 +1291,9 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	rc = pm_runtime_resume_and_get(sde_kms->dev->dev);
 	if (rc < 0) {
 		SDE_ERROR("failed to enable power resources %d\n", rc);
+#ifdef OPLUS_FEATURE_DISPLAY
+		SDE_MM_ERROR("DisplayDriverID@@407$$failed to enable power resources %d\n", rc);
+#endif /* OPLUS_FEATURE_DISPLAY */
 		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
 		goto end;
 	}
